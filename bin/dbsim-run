@@ -34,8 +34,8 @@ def main():
     dbsim.util.setup_logging(args.loglevel)
     logger=logging.getLogger(__name__)
 
-    sim_conf = dbsim.files.read_config(args.sim_config)
-    run_conf = dbsim.files.read_config(args.run_config)
+    sim_conf = dbsim.files.read_yaml(args.sim_config)
+    run_conf = dbsim.files.read_yaml(args.run_config)
 
     if args.profile:
         logger.info('profiling sim with cProfile')

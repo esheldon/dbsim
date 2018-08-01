@@ -12,6 +12,7 @@ and doesn't degrade the chi squared
 import numpy as np
 import ngmix
 import galsim
+import minimof
 
 class Sim(dict):
     def __init__(self, config, rng):
@@ -60,7 +61,14 @@ class Sim(dict):
         this runs sep on the image
         """
         mm=self.get_multiband_meds()
-        return mm.get_mbobs_list(weight_type=weight_type)
+        mbobs_list = mm.get_mbobs_list(weight_type=weight_type)
+
+        for mbobs in mbobs_list:
+            for olist in mbobs:
+                for obs in olist:
+                    obs.set_psf(self.psf_obs)
+
+        return mbobs_list
 
     def get_multiband_meds(self):
         medser=self.get_medsifier()
@@ -68,7 +76,6 @@ class Sim(dict):
         return mm
 
     def get_medsifier(self):
-        from .stamps import MEDSifier
         dlist=[]
         for olist in self.obs:
             # assuming only one image per band
@@ -83,7 +90,7 @@ class Sim(dict):
                 )
             )
 
-        return MEDSifier(dlist)
+        return minimof.stamps.MEDSifier(dlist)
 
     def _make_g_pdf(self):
         c=self['pdfs']['g']
@@ -211,10 +218,10 @@ class Sim(dict):
                 cknots['color']=[1.0]
 
 
-    def _fit_psf_admom(self, obs):
-        Tguess=4.0*self['pixel_scale']**2
-        am=ngmix.admom.run_admom(obs, Tguess)
-        return am.get_gmix()
+    #def _fit_psf_admom(self, obs):
+    #    Tguess=4.0*self['pixel_scale']**2
+    #    am=ngmix.admom.run_admom(obs, Tguess)
+    #    return am.get_gmix()
 
     def _set_psf(self):
         import galsim
@@ -249,8 +256,8 @@ class Sim(dict):
             jacobian=pjac,
         )
 
-        psf_gmix=self._fit_psf_admom(self.psf_obs)
-        self.psf_obs.set_gmix(psf_gmix)
+        #psf_gmix=self._fit_psf_admom(self.psf_obs)
+        #self.psf_obs.set_gmix(psf_gmix)
 
     def _get_hlr_flux(self):
         if 'hlr_flux' in self['pdfs']:
@@ -337,7 +344,7 @@ class Sim(dict):
         cbulge=self['pdfs']['bulge']
         cknots=self['pdfs'].get('knots',None)
 
-        for band in xrange(self['nband']):
+        for band in range(self['nband']):
             objects=[]
             for obj_parts in self.objlist:
 

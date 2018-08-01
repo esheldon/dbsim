@@ -19,24 +19,23 @@ def go(sim_conf,
     fitseed=rng.randint(0,2**30)
     fitrng = np.random.RandomState(fitseed)
 
-    sim=simulation.Sim(config, rng)
-
+    sim=simulation.Sim(sim_conf, rng)
 
     fclass=get_fitclass(run_conf)
-
     fitter=fclass(run_conf, sim_conf['nband'], fitrng)
 
     datalist=[]
     for i in range(ntrials):
 
+        sim.make_obs()
         mbobs_list = sim.get_mbobs_list()
         if len(mbobs_list)==0:
             logger.debug("no objects detected")
         else:
 
-            res=mof_fitter.go(mbobs)
+            res=fitter.go(mbobs_list)
             if res is None:
-                logger.debug("failed to fit MOF")
+                logger.debug("failed to fit")
             else:
                 datalist.append(res)
 
@@ -46,10 +45,10 @@ def go(sim_conf,
         data = eu.numpy_util.combine_arrlist(datalist)
         write_output(output_file, data)
 
-def get_fitclass(run_conf):
-    if run_conf['fitter']=='mof':
+def get_fitclass(conf):
+    if conf['fitter']=='mof':
         fclass=fitters.MOFFitter
-    elif run_conf['fitter']=='metacal':
+    elif conf['fitter']=='metacal':
         fclass=fitters.MetacalFitter
     else:
         raise ValueError("bad fitter: '%s'" % run_conf['fitter'])
