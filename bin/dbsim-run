@@ -8,7 +8,7 @@ for some sims npair might just be ngal
 from __future__ import print_function
 import logging
 
-import deblendsim as dbsim
+import dbsim
 
 from argparse import ArgumentParser
 parser=ArgumentParser(__doc__)
@@ -40,19 +40,19 @@ def main():
     if args.profile:
         logger.info('profiling sim with cProfile')
         dbsim.run.profile_sim(
-            args.seed,
             sim_conf,
             run_conf,
             args.ntrials,
+            args.seed,
             args.output_file,
         )
     else:
         logger.info('running sim')
         dbsim.run.go(
-            args.seed,
             sim_conf,
             run_conf,
             args.ntrials,
+            args.seed,
             args.output_file,
             make_plots=args.make_plots,
         )
