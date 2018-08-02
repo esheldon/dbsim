@@ -9,7 +9,7 @@ from ngmix.gexceptions import GMixMaxIterEM
 from ngmix.gmix import GMixModel
 from ngmix.gexceptions import BootPSFFailure, BootGalFailure
 
-from .util import log_pars, TryAgainError
+from .util import log_pars, TryAgainError, Namer
 
 import minimof
 
@@ -143,12 +143,12 @@ class MOFFitter(FitterBase):
         fitter.go(guess)
 
         res=fitter.get_result()
-        pprint(res)
 
         if res['flags'] != 0:
             data=None
         else:
-            data=self._get_output(res)
+            reslist=fitter.get_result_list()
+            data=self._get_output(reslist)
 
         return data
 
@@ -156,6 +156,43 @@ class MOFFitter(FitterBase):
         fitter=AllPSFFitter(mbobs_list, psf_conf)
         fitter.go()
 
+    def _get_dtype(self, npars):
+        n=Namer(front=self['mof']['model'])
+        return [
+            ('psf_g','f8',2),
+            ('psf_T','f8'),
+            (n('nfev'),'i4'),
+            (n('s2n'),'f8'),
+            (n('pars'),'f8',npars),
+            (n('pars_cov'),'f8',(npars,npars)),
+            (n('g'),'f8',2),
+            (n('g_cov'),'f8',(2,2)),
+            (n('T'),'f8'),
+            (n('T_err'),'f8'),
+            (n('T_ratio'),'f8'),
+        ]
+
+    def _get_output(self,reslist):
+
+        npars=reslist[0]['pars'].size
+
+        n=Namer(front=self['mof']['model'])
+
+        dt=self._get_dtype(npars)
+        output=np.zeros(len(reslist), dtype=dt)
+
+        for i,res in enumerate(reslist):
+            t=output[i] 
+
+            for name,val in res.items():
+                if 'psf' in name:
+                    t[name] = val
+                else:
+                    nname=n(name)
+                    t[nname] = val
+
+        return output
+            
 class AllPSFFitter(object):
     def __init__(self, mbobs_list, psf_conf):
         self.mbobs_list=mbobs_list
