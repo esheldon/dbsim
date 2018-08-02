@@ -148,7 +148,7 @@ class MOFFitter(FitterBase):
             data=None
         else:
             reslist=fitter.get_result_list()
-            data=self._get_output(reslist)
+            data=self._get_output(reslist, fitter.nband)
 
         return data
 
@@ -156,9 +156,9 @@ class MOFFitter(FitterBase):
         fitter=AllPSFFitter(mbobs_list, psf_conf)
         fitter.go()
 
-    def _get_dtype(self, npars):
+    def _get_dtype(self, npars, nband):
         n=Namer(front=self['mof']['model'])
-        return [
+        dt = [
             ('psf_g','f8',2),
             ('psf_T','f8'),
             (n('nfev'),'i4'),
@@ -170,21 +170,35 @@ class MOFFitter(FitterBase):
             (n('T'),'f8'),
             (n('T_err'),'f8'),
             (n('T_ratio'),'f8'),
+            (n('flux'),'f8',nband),
+            (n('flux_cov'),'f8',(nband,nband)),
+            (n('flux_err'),'f8',nband),
         ]
 
-    def _get_output(self,reslist):
+        if self['mof']['model']=='bdf':
+            dt += [
+                (n('fracdev'),'f8'),
+                (n('fracdev_err'),'f8'),
+            ]
+        return dt
+
+    def _get_output(self,reslist,nband):
 
         npars=reslist[0]['pars'].size
 
-        n=Namer(front=self['mof']['model'])
+        model=self['mof']['model']
+        n=Namer(front=model)
 
-        dt=self._get_dtype(npars)
+        dt=self._get_dtype(npars, nband)
         output=np.zeros(len(reslist), dtype=dt)
 
         for i,res in enumerate(reslist):
             t=output[i] 
 
             for name,val in res.items():
+                if name=='nband':
+                    continue
+
                 if 'psf' in name:
                     t[name] = val
                 else:
