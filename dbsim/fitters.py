@@ -11,7 +11,7 @@ from ngmix.gexceptions import BootPSFFailure, BootGalFailure
 
 from .util import log_pars, TryAgainError, Namer
 
-import minimof
+import mof
 
 logger = logging.getLogger(__name__)
 
@@ -129,12 +129,12 @@ class MOFFitter(FitterBase):
         self._fit_all_psfs(mbobs_list, self['mof']['psf'])
 
         mofc = self['mof']
-        fitter = minimof.MOFStamps(
+        fitter = mof.MOFStamps(
             mbobs_list,
             mofc['model'],
             prior=self.mof_prior,
         )
-        guess=minimof.mof.get_stamp_guesses(
+        guess=mof.moflib.get_stamp_guesses(
             mbobs_list,
             mofc['detband'],
             mofc['model'],

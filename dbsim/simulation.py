@@ -12,7 +12,7 @@ and doesn't degrade the chi squared
 import numpy as np
 import ngmix
 import galsim
-import minimof
+import mof
 from . import visualize
 
 class Sim(dict):
@@ -91,7 +91,7 @@ class Sim(dict):
                 )
             )
 
-        return minimof.stamps.MEDSifier(dlist)
+        return mof.stamps.MEDSifier(dlist)
 
     def show(self):
         """
