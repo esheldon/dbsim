@@ -13,6 +13,7 @@ import numpy as np
 import ngmix
 import galsim
 import minimof
+from . import visualize
 
 class Sim(dict):
     def __init__(self, config, rng):
@@ -92,6 +93,25 @@ class Sim(dict):
 
         return minimof.stamps.MEDSifier(dlist)
 
+    def show(self):
+        """
+        show a nice image of the simulation
+        """
+        import images
+        rgb=self.get_color_image()
+        images.view(rgb/rgb.max())
+
+    def get_color_image(self):
+        """
+        get an rgb image of the sim
+        """
+        assert self['nband']==3,"must have 3 bands for color image"
+        return visualize.make_rgb(
+            self.obs[2][0].image,
+            self.obs[1][0].image,
+            self.obs[0][0].image,
+        )
+
     def _make_g_pdf(self):
         c=self['pdfs']['g']
         rng=self.rng
@@ -101,8 +121,8 @@ class Sim(dict):
         c=self['pdfs']['hlr']
         return self._get_generic_pdf(c)
 
-    def _make_F_pdf(self):
-        c=self['pdfs']['F']
+    def _make_flux_pdf(self):
+        c=self['pdfs']['flux']
         if c['type']=='track_hlr':
             return 'track_hlr'
         else:
@@ -113,7 +133,7 @@ class Sim(dict):
             self.hlr_flux_pdf=self._make_hlr_flux_pdf()
         else:
             self.hlr_pdf = self._make_hlr_pdf()
-            self.F_pdf = self._make_F_pdf()
+            self.flux_pdf = self._make_flux_pdf()
 
     def _make_hlr_flux_pdf(self):
         from .pdfs import CosmosSampler
@@ -200,9 +220,6 @@ class Sim(dict):
         else:
             return ngmix.priors.LimitPDF(pdf, [0.0, 30.0])
 
-    def show(self):
-        images.multiview(self.image)
-
     def _set_bands(self):
         nband=self.get('nband',None)
 
@@ -263,12 +280,12 @@ class Sim(dict):
         if 'hlr_flux' in self['pdfs']:
             hlr, flux = self.hlr_flux_pdf.sample()
         else:
-            disk_hlr = self.hlr_pdf.sample()
+            hlr = self.hlr_pdf.sample()
 
-            if self.F_pdf=='track_hlr':
-                flux = disk_hlr**2 *self['pdfs']['F']['factor']
+            if self.flux_pdf=='track_hlr':
+                flux = hlr**2 *self['pdfs']['F']['factor']
             else:
-                flux = self.F_pdf.sample()
+                flux = self.flux_pdf.sample()
 
         return hlr, flux
 
@@ -311,7 +328,6 @@ class Sim(dict):
  
         if 'knots' in self['pdfs']:
             nknots, knots_flux = self._get_knots_stats(disk_flux)
-
 
             knots = galsim.RandomWalk(
                 npoints=nknots,
