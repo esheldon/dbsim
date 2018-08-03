@@ -2,6 +2,7 @@ import logging
 import numpy as np
 from pprint import pprint
 
+import esutil as eu
 import ngmix
 from ngmix.gexceptions import GMixRangeError
 from ngmix.observation import Observation
@@ -14,6 +15,8 @@ from .util import log_pars, TryAgainError, Namer
 import mof
 
 logger = logging.getLogger(__name__)
+
+METACAL_TYPES=['noshear','1p','1m','2p','2m']
 
 class FitterBase(dict):
     def __init__(self, run_conf, nband, rng):
@@ -121,9 +124,19 @@ class MOFFitter(FitterBase):
         self.mof_prior = self._get_prior(self['mof'])
 
 
-    def go(self, mbobs_list):
+    def go(self, mbobs_list, get_fitter=False):
         """
         run the multi object fitter
+
+        parameters
+        ----------
+        mbobs_list: list of MultiBandObsList
+            One for each object
+
+        returns
+        -------
+        data: ndarray
+            Array with all output fields
         """
 
         self._fit_all_psfs(mbobs_list, self['mof']['psf'])
@@ -150,7 +163,11 @@ class MOFFitter(FitterBase):
             reslist=fitter.get_result_list()
             data=self._get_output(reslist, fitter.nband)
 
-        return data
+        if get_fitter:
+            return fitter, data
+        else:
+            return data
+
 
     def _fit_all_psfs(self, mbobs_list, psf_conf):
         fitter=AllPSFFitter(mbobs_list, psf_conf)
@@ -207,6 +224,171 @@ class MOFFitter(FitterBase):
 
         return output
             
+class MetacalFitter(MOFFitter):
+    """
+    run metacal on all objects found in the image, using
+    the deblended or "corrected" images produced by the
+    multi-object fitter
+    """
+    def __init__(self, *args, **kw):
+
+        super(MetacalFitter,self).__init__(*args, **kw)
+
+        self.metacal_prior = self._get_prior(self['metacal'])
+
+    def go(self, mbobs_list):
+        """
+        do all fits and return fitter, data
+
+        metacal data are appended to the mof data for each object
+        """
+        mof_fitter, data = super(MetacalFitter,self).go(
+            mbobs_list,
+            get_fitter=True,
+        )
+        if data is None:
+            return None
+
+        # this gets all objects, all bands in a list of MultiBandObsList
+        corrected_mbobs_list = mof_fitter.make_corrected_obs()
+        return self._do_metacal(corrected_mbobs_list, data)
+
+    def _do_metacal(self, mbobs_list, data):
+        """
+        run metacal on all objects
+
+        if some fail they will not be placed into the final output
+        """
+
+        nband=len(mbobs_list[0])
+
+        datalist=[]
+        for i,mbobs in enumerate(mbobs_list):
+            try:
+                boot=self._do_one_metacal(mbobs, data[i])
+                res=boot.get_metacal_result()
+            except (BootPSFFailure, BootGalFailure):
+                res={'mcal_flags':1}
+
+            if res['mcal_flags'] != 0:
+                logger.debug("        metacal fit failed")
+            else:
+                # make sure we send an array
+                odata = data[i:i+1]
+                new_data = self._get_metacal_output(odata, res, nband)
+                self._print_result(new_data)
+                datalist.append(new_data)
+
+        if len(datalist) == 0:
+            return None
+
+        output = eu.numpy_util.combine_arrlist(datalist)
+        return output
+
+    def _do_one_metacal(self, mbobs, data):
+        conf=self['metacal']
+
+        psf_pars=conf['psf']
+        max_conf=conf['max_pars']
+
+        psf_Tguess=mbobs[0][0].psf.gmix.get_T()
+
+        boot=self._get_bootstrapper(mbobs)
+        boot.fit_metacal(
+
+            psf_pars['model'],
+
+            conf['model'],
+            max_conf['pars'],
+
+            psf_Tguess,
+            psf_fit_pars=psf_pars['lm_pars'],
+            psf_ntry=psf_pars['ntry'],
+
+            prior=self.metacal_prior,
+            ntry=max_conf['ntry'],
+
+            metacal_pars=conf['metacal_pars'],
+        )
+        return boot
+
+    def _print_result(self, data):
+        mess="        mcal s2n: %g Trat: %g"
+        logger.debug(mess % (data['mcal_s2n'][0], data['mcal_T_ratio'][0]))
+
+    def _get_metacal_dtype(self, npars, nband):
+        dt=[]
+        for mtype in METACAL_TYPES:
+            if mtype == 'noshear':
+                back=None
+            else:
+                back=mtype
+
+            n=Namer(front='mcal', back=back)
+            if mtype=='noshear':
+                dt += [
+                    (n('psf_g'),'f8',2),
+                    (n('psf_T'),'f8'),
+                ]
+
+            dt += [
+                (n('nfev'),'i4'),
+                (n('s2n'),'f8'),
+                (n('pars'),'f8',npars),
+                (n('pars_cov'),'f8',(npars,npars)),
+                (n('g'),'f8',2),
+                (n('g_cov'),'f8',(2,2)),
+                (n('T'),'f8'),
+                (n('T_err'),'f8'),
+                (n('T_ratio'),'f8'),
+                (n('flux'),'f8',nband),
+                (n('flux_cov'),'f8',(nband,nband)),
+                (n('flux_err'),'f8',nband),
+            ]
+
+        return dt
+
+    def _get_metacal_output(self, odata, allres, nband):
+        npars=len(allres['noshear']['pars'])
+        extra_dt = self._get_metacal_dtype(npars, nband)
+        data = eu.numpy_util.add_fields(odata, extra_dt)
+        data0=data[0]
+
+        for mtype in METACAL_TYPES:
+
+            if mtype == 'noshear':
+                back=None
+            else:
+                back=mtype
+
+            n=Namer(front='mcal', back=back)
+
+            res=allres[mtype]
+
+            if mtype=='noshear':
+                data0[n('psf_g')] = res['gpsf']
+                data0[n('psf_T')] = res['Tpsf']
+
+            for name in res:
+                nn=n(name)
+                if nn in data.dtype.names:
+                    data0[nn] = res[name]
+
+            # this relies on noshear coming first in the metacal
+            # types
+            data0[n('T_ratio')] = data0[n('T')]/data0['mcal_psf_T']
+
+        return data
+
+    def _get_bootstrapper(self, mbobs):
+        from ngmix.bootstrap import MaxMetacalBootstrapper
+
+        return MaxMetacalBootstrapper(
+            mbobs,
+            verbose=False,
+        )
+
+
 class AllPSFFitter(object):
     def __init__(self, mbobs_list, psf_conf):
         self.mbobs_list=mbobs_list

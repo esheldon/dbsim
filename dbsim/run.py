@@ -30,6 +30,7 @@ def go(sim_conf,
 
     nsim=0
     nfit=0
+    nobj_detected=0
     tm0 = time.time()
     tm_sim=0.0
     tm_fit=0.0
@@ -37,12 +38,15 @@ def go(sim_conf,
     datalist=[]
     for i in range(ntrials):
 
+        logger.debug("trial: %d/%d" % (i+1,ntrials))
+
         tm0=time.time()
         sim.make_obs()
         mbobs_list = sim.get_mbobs_list()
         tm_sim += time.time()-tm0
         nsim += 1
 
+        logger.debug("    found %d objects" % len(mbobs_list))
         if show:
             sim.show()
             if 'q'==input('hit a key (q to quit): '):
@@ -57,6 +61,7 @@ def go(sim_conf,
             res=fitter.go(mbobs_list)
             tm_fit += time.time()-tm0
             nfit += 1
+            nobj_detected += len(mbobs_list)
 
             if res is None:
                 logger.debug("failed to fit")
@@ -66,17 +71,64 @@ def go(sim_conf,
     elapsed_time=time.time()-tm0
     nkept = len(datalist)
 
+    meta=make_meta(
+        ntrials, nsim, nfit, nobj_detected,
+        nkept, elapsed_time, tm_sim, tm_fit,
+    )
+
     print("kept: %d/%d %.2f" % (nkept,ntrials,float(nkept)/ntrials))
-    print("time minutes:",elapsed_time/60.0)
-    print("time per sim:",tm_sim/nsim)
+    print("time minutes:",meta['tm_minutes'][0])
+    print("time per sim:",meta['tm_per_sim'][0])
     if nfit > 0:
-        print("time per fit:",tm_fit/nfit)
+        print("time per fit:",meta['tm_per_fit'][0])
+        print("time fit per detected object:",meta['tm_per_obj_detected'][0])
 
     if nkept == 0:
         logger.info("no results to write")
     else:
         data = eu.numpy_util.combine_arrlist(datalist)
-        write_output(output_file, data)
+        write_output(output_file, data, meta)
+
+def make_meta(ntrials, nsim, nfit, nobj_detected, nkept, elapsed_time, tm_sim, tm_fit):
+    dt=[
+        ('ntrials','i8'),
+        ('nsim','i8'),
+        ('nfit','i8'),
+        ('nobj_detected','i8'),
+        ('nkept','i8'),
+        ('tm_sim','f4'),
+        ('tm_fit','f4'),
+        ('tm_minutes','f4'),
+        ('tm_per_sim','f4'),
+        ('tm_per_fit','f4'),
+        ('tm_per_obj_detected','f4'),
+    ]
+    meta=np.zeros(1, dtype=dt)
+    meta['ntrials'] = ntrials
+    meta['nsim'] = nsim
+    meta['nfit'] = nfit
+    meta['nobj_detected'] = nobj_detected
+    meta['nkept'] = nkept
+    meta['tm_sim'] = tm_sim
+    meta['tm_fit'] = tm_fit
+    meta['tm_minutes'] = elapsed_time/60
+    meta['tm_per_sim'] = tm_sim/nsim
+
+    if nfit > 0:
+        tm_per_fit=tm_fit/nfit
+    else:
+        tm_per_fit=-9999
+
+    if nobj_detected > 0:
+        tm_per_obj_detected =tm_fit/nobj_detected
+    else:
+        tm_per_obj_detected=-9999
+
+    meta['tm_per_fit'] = tm_per_fit
+    meta['tm_per_obj_detected'] = tm_per_obj_detected
+
+    return meta
+
 
 def get_fitclass(conf):
     """
@@ -84,10 +136,10 @@ def get_fitclass(conf):
     """
     if conf['fitter']=='mof':
         fclass=fitters.MOFFitter
-    elif conf['fitter']=='metacal':
+    elif conf['fitter']=='mof-metacal':
         fclass=fitters.MetacalFitter
     else:
-        raise ValueError("bad fitter: '%s'" % run_conf['fitter'])
+        raise ValueError("bad fitter: '%s'" % conf['fitter'])
     return fclass
 
 
@@ -106,7 +158,7 @@ def profile_sim(seed,sim_conf,run_conf,ntrials,output_file):
     p.sort_stats('time').print_stats()
 
 
-def write_output(output_file, data):
+def write_output(output_file, data, meta):
     """
     write an output file, making the directory if needed
     """
@@ -119,4 +171,6 @@ def write_output(output_file, data):
             pass
 
     logger.info("writing: %s" % output_file)
-    fitsio.write(output_file, data, clobber=True)
+    with fitsio.FITS(output_file,'rw',clobber=True) as fits:
+        fits.write(data, ext='model_fits')
+        fits.write(meta, ext='meta_data')
