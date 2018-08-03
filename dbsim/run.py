@@ -10,7 +10,7 @@ from . import fitters
 logger = logging.getLogger(__name__)
 
 def go(sim_conf,
-       run_conf,
+       fit_conf,
        ntrials,
        seed,
        output_file,
@@ -25,13 +25,13 @@ def go(sim_conf,
 
     sim=simulation.Sim(sim_conf, rng)
 
-    fclass=get_fitclass(run_conf)
-    fitter=fclass(run_conf, sim_conf['nband'], fitrng)
+    fclass=get_fitclass(fit_conf)
+    fitter=fclass(fit_conf, sim_conf['nband'], fitrng)
 
     nsim=0
     nfit=0
     nobj_detected=0
-    tm0 = time.time()
+    tm0_main = time.time()
     tm_sim=0.0
     tm_fit=0.0
 
@@ -68,7 +68,7 @@ def go(sim_conf,
             else:
                 datalist.append(res)
 
-    elapsed_time=time.time()-tm0
+    elapsed_time=time.time()-tm0_main
     nkept = len(datalist)
 
     meta=make_meta(
@@ -78,6 +78,7 @@ def go(sim_conf,
 
     print("kept: %d/%d %.2f" % (nkept,ntrials,float(nkept)/ntrials))
     print("time minutes:",meta['tm_minutes'][0])
+    print("time per trial:",meta['tm_per_trial'][0])
     print("time per sim:",meta['tm_per_sim'][0])
     if nfit > 0:
         print("time per fit:",meta['tm_per_fit'][0])
@@ -96,9 +97,11 @@ def make_meta(ntrials, nsim, nfit, nobj_detected, nkept, elapsed_time, tm_sim, t
         ('nfit','i8'),
         ('nobj_detected','i8'),
         ('nkept','i8'),
+        ('tm','f4'),
+        ('tm_minutes','f4'),
+        ('tm_per_trial','f4'),
         ('tm_sim','f4'),
         ('tm_fit','f4'),
-        ('tm_minutes','f4'),
         ('tm_per_sim','f4'),
         ('tm_per_fit','f4'),
         ('tm_per_obj_detected','f4'),
@@ -111,8 +114,10 @@ def make_meta(ntrials, nsim, nfit, nobj_detected, nkept, elapsed_time, tm_sim, t
     meta['nkept'] = nkept
     meta['tm_sim'] = tm_sim
     meta['tm_fit'] = tm_fit
+    meta['tm'] = elapsed_time
     meta['tm_minutes'] = elapsed_time/60
     meta['tm_per_sim'] = tm_sim/nsim
+    meta['tm_per_trial'] = elapsed_time/ntrials
 
     if nfit > 0:
         tm_per_fit=tm_fit/nfit
@@ -143,14 +148,14 @@ def get_fitclass(conf):
     return fclass
 
 
-def profile_sim(seed,sim_conf,run_conf,ntrials,output_file):
+def profile_sim(seed,sim_conf,fit_conf,ntrials,output_file):
     """
     run the simulation using a profiler
     """
     import cProfile
     import pstats
 
-    cProfile.runctx('go(seed,sim_conf,run_conf,ntrials,output_file)',
+    cProfile.runctx('go(seed,sim_conf,fit_conf,ntrials,output_file)',
                     globals(),locals(),
                     'profile_stats')
     

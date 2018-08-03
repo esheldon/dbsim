@@ -85,3 +85,27 @@ def convert_run_to_seed(run):
 
     return seed
 
+def get_trials_nsplit(c):
+    """
+    split into chunks
+    """
+    from math import ceil
+
+    ntrials = c['ntrials']
+
+    tmsec = c['desired_hours']*3600.0
+
+    sec_per = c['sec_per']
+
+    ntrials_per = int(round( tmsec/sec_per ) )
+
+    nsplit = int(ceil( ntrials/float(ntrials_per) ))
+
+    time_hours = ntrials_per*sec_per/3600.0
+
+    logger.info("ntrials requested: %s" % (ntrials))
+    logger.info('seconds per image: %s sec per with rand: %s' % (c['sec_per'],sec_per))
+    logger.info('nsplit: %d ntrials per: %d time (hours): %s' % (nsplit,ntrials_per,time_hours))
+
+
+    return ntrials_per, nsplit, time_hours
