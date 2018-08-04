@@ -9,6 +9,7 @@ and doesn't degrade the chi squared
 {'ftol':tol, 'xtol':tol}
 
 """
+import copy
 import numpy as np
 import ngmix
 import galsim
@@ -67,7 +68,8 @@ class Sim(dict):
         for mbobs in mbobs_list:
             for olist in mbobs:
                 for obs in olist:
-                    obs.set_psf(self.psf_obs)
+                    psf_obs=copy.deepcopy(self.psf_obs)
+                    obs.set_psf(psf_obs)
 
         return mbobs_list
 
