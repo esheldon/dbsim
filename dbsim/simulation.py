@@ -52,9 +52,6 @@ class Sim(dict):
     def get_obs(self):
         return self.obs
 
-    def get_psf_obs(self):
-        return self.psf_obs
-
     def get_mbobs_list(self, weight_type='weight'):
         """
         get a list of MultiBandObsList for every object or
@@ -68,7 +65,7 @@ class Sim(dict):
         for mbobs in mbobs_list:
             for olist in mbobs:
                 for obs in olist:
-                    psf_obs=copy.deepcopy(self.psf_obs)
+                    psf_obs=self.get_psf_obs()
                     obs.set_psf(psf_obs)
 
         return mbobs_list
@@ -242,19 +239,15 @@ class Sim(dict):
     #    am=ngmix.admom.run_admom(obs, Tguess)
     #    return am.get_gmix()
 
-    def _set_psf(self):
-        import galsim
-
-        self.psf = galsim.Gaussian(fwhm=0.9)
-
+    def get_psf_obs(self):
         kw={'scale':self['pixel_scale']}
         dims=self.get('psf_dims',None)
         if dims is not None:
             kw['nx'],kw['ny'] = dims[1],dims[0]
 
-        self.psf_im = self.psf.drawImage(**kw).array
+        psf_im = self.psf.drawImage(**kw).array
 
-        dims = np.array(self.psf_im.shape)
+        dims = np.array(psf_im.shape)
         pcen=(dims-1.0)/2.0
         pjac = ngmix.DiagonalJacobian(
             row=pcen[0],
@@ -262,21 +255,23 @@ class Sim(dict):
             scale=self['pixel_scale']
         )
 
-
-        self.psf_im += self.rng.normal(
+        psf_im += self.rng.normal(
             scale=self['psf_noise_sigma'],
             size=dims,
         )
         psf_wt=np.zeros(dims)+1.0/self['psf_noise_sigma']**2
 
-        self.psf_obs = ngmix.Observation(
-            self.psf_im,
+        return ngmix.Observation(
+            psf_im,
             weight=psf_wt,
             jacobian=pjac,
         )
 
-        #psf_gmix=self._fit_psf_admom(self.psf_obs)
-        #self.psf_obs.set_gmix(psf_gmix)
+
+    def _set_psf(self):
+        import galsim
+
+        self.psf = galsim.Gaussian(fwhm=0.9)
 
     def _get_hlr_flux(self):
         if 'hlr_flux' in self['pdfs']:
@@ -398,7 +393,6 @@ class Sim(dict):
             if dims is not None:
                 kw['nx'],kw['ny'] = dims[1],dims[0]
 
-            dims = np.array(self.psf_im.shape)
             image =  convolved_objects.drawImage(**kw).array
             self.imlist.append(image)
 
@@ -427,7 +421,7 @@ class Sim(dict):
                 im,
                 weight=wt,
                 jacobian=jacobian,
-                psf=self.psf_obs,
+                psf=self.get_psf_obs(),
             )
             olist=ngmix.ObsList()
             olist.append(obs)
