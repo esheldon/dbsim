@@ -35,6 +35,8 @@ def go(sim_conf,
     tm_sim=0.0
     tm_fit=0.0
 
+    weight_type=fit_conf['weight_type']
+
     datalist=[]
     for i in range(ntrials):
 
@@ -42,7 +44,7 @@ def go(sim_conf,
 
         tm0=time.time()
         sim.make_obs()
-        mbobs_list = sim.get_mbobs_list()
+        mbobs_list = sim.get_mbobs_list(weight_type=weight_type)
         tm_sim += time.time()-tm0
         nsim += 1
 
