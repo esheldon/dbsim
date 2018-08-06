@@ -12,9 +12,11 @@ and doesn't degrade the chi squared
 import copy
 import numpy as np
 import ngmix
+import esutil as eu
 import galsim
 import mof
 from . import visualize
+from . import pdfs
 
 class Sim(dict):
     def __init__(self, config, rng):
@@ -31,15 +33,7 @@ class Sim(dict):
         if 'knots' in self['pdfs']:
             self._make_knots_pdfs()
 
-        sigma=self['cluster_scale']
-        maxrad = 3*sigma
-
-        self.position_pdf=ngmix.priors.TruncatedSimpleGauss2D(
-            0.0,0.0,
-            sigma, sigma,
-            maxrad,
-            rng=self.rng,
-        )
+        self._set_position_pdf()
 
     def make_obs(self):
         self._set_bands()
@@ -52,6 +46,58 @@ class Sim(dict):
     def get_obs(self):
         return self.obs
 
+    def get_fofs(self, fof_conf, weight_type='weight', show=False):
+        """
+        get lists of MultiBandObsList s for each
+        Friends of Friends group
+        """
+        mm=self.get_multiband_meds()
+
+        mn=mof.fofs.MEDSNbrs(
+            mm.mlist,
+            fof_conf,
+        )
+
+        nbr_data = mn.get_nbrs()
+
+        nf = mof.fofs.NbrsFoF(nbr_data)
+        fofs = nf.get_fofs()
+        if show:
+            self._plot_fofs(mm, fofs)
+
+        hist,rev=eu.stat.histogram(fofs['fofid'], rev=True)
+
+        fof_mbobs_lists=[]
+        for i in range(hist.size):
+            assert rev[i] != rev[i+1],'all fof groups should be populated'
+            w=rev[ rev[i]:rev[i+1] ]
+
+            # assuming number is index+1
+            indices=fofs['number'][w]-1
+
+            mbobs_list=[]
+            for index in indices:
+                mbobs=mm.get_mbobs(index, weight_type=weight_type)
+                mbobs_list.append( mbobs )
+
+            self._set_psfs(mbobs_list)
+            fof_mbobs_lists.append( mbobs_list )
+
+        return fof_mbobs_lists
+
+    def _plot_fofs(self, mm, fofs):
+        """
+        make a plot of the fofs
+        """
+        mof.fofs.plot_fofs(
+            mm.mlist[0],
+            fofs,
+            show=True,
+            type='filled circle',
+            orig_dims=self.obs[0][0].image.shape
+        )
+
+
     def get_mbobs_list(self, weight_type='weight'):
         """
         get a list of MultiBandObsList for every object or
@@ -61,21 +107,30 @@ class Sim(dict):
         """
         mm=self.get_multiband_meds()
         mbobs_list = mm.get_mbobs_list(weight_type=weight_type)
+        self._set_psfs(mbobs_list)
 
+        return mbobs_list
+
+    def _set_psfs(self, mbobs_list):
         for mbobs in mbobs_list:
             for olist in mbobs:
                 for obs in olist:
                     psf_obs=self.get_psf_obs()
                     obs.set_psf(psf_obs)
 
-        return mbobs_list
 
     def get_multiband_meds(self):
+        """
+        get a multiband MEDS instance
+        """
         medser=self.get_medsifier()
         mm=medser.get_multiband_meds()
         return mm
 
     def get_medsifier(self):
+        """
+        medsify the data
+        """
         dlist=[]
         for olist in self.obs:
             # assuming only one image per band
@@ -267,6 +322,37 @@ class Sim(dict):
             jacobian=pjac,
         )
 
+    def _set_position_pdf(self):
+        type=self['positions']['type']
+        if type=='cluster':
+            sigma=self['positions']['scale']
+            maxrad = 3*sigma
+
+            pdf=ngmix.priors.TruncatedSimpleGauss2D(
+                0.0,0.0,
+                sigma, sigma,
+                maxrad,
+                rng=self.rng,
+            )
+        elif type=='uniform':
+            half=self['positions']['width']/2.0
+            pdf=pdfs.Flat2D(
+                [-half, half],
+                [-half, half],
+                rng=self.rng,
+            )
+
+        self.position_pdf=pdf
+
+    def _get_nobj(self):
+        nobj=self['nobj']
+        if isinstance(nobj,dict):
+            nobj = self.rng.poisson(lam=nobj['mean'])
+        else:
+            nobj=self['nobj']
+
+        return nobj
+
 
     def _set_psf(self):
         import galsim
@@ -340,7 +426,9 @@ class Sim(dict):
 
     def _set_objects(self):
         self.objlist=[]
-        for i in range(self['nobj']):
+
+        nobj = self._get_nobj()
+        for i in range(nobj):
 
             obj = self._get_object()
             self.objlist.append(obj)

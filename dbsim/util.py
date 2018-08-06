@@ -109,3 +109,11 @@ def get_trials_nsplit(c):
 
 
     return ntrials_per, nsplit, time_hours
+
+def get_trials_per_job_mpi(njobs, ntrials):
+    """
+    split for mpi
+    """
+    return int(round(float(ntrials)/njobs))
+
+

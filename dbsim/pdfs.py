@@ -1,5 +1,6 @@
 import os
 import numpy as np
+import ngmix
 
 class CosmosSampler(object):
     def __init__(self,
@@ -131,3 +132,23 @@ class CosmosSampler(object):
         )
 
 
+class Flat2D(ngmix.priors.PriorBase):
+    def __init__(self, xrng, yrng, rng=None):
+        super(Flat2D,self).__init__(rng=rng)
+
+        assert len(xrng)==2
+        assert len(yrng)==2
+        self.xrng=xrng
+        self.yrng=yrng
+
+    def sample(self):
+        output=np.zeros(2)
+        output[0] = self.rng.uniform(
+            low  = self.yrng[0],
+            high = self.yrng[1],
+        )
+        output[1] = self.rng.uniform(
+            low  = self.xrng[0],
+            high = self.xrng[1],
+        )
+        return output

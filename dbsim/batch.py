@@ -148,8 +148,7 @@ function runsim {
     echo "host: $(hostname)"
     echo "will write to file: $output"
 
-    command=%(command)s
-    ${command} --seed ${seed} ${run} ${ntrials} ${output}
+    dbsim-run ${sim_config} ${fit_config} ${ntrials} ${seed} ${output}
     status=$?
 
     echo "time: $SECONDS"
@@ -164,12 +163,12 @@ function runsim {
 export OMP_NUM_THREADS=1
 
 ntrials=$1
-output=$2
-logfile=$3
-seed=$4
+seed=$2
+output=$3
+logfile=$4
 
-run=%(run)s
-
+sim_config=%(sim_config)s
+fit_config=%(fit_config)s
 
 if [[ -n $_CONDOR_SCRATCH_DIR ]]; then
     tmpdir=$_CONDOR_SCRATCH_DIR
@@ -216,7 +215,7 @@ kill_sig        = SIGINT
 
 _condor_job_template="""
 +job_name = "%(job_name)s"
-Arguments = %(ntrials_per)s %(output)s %(logfile)s %(seed)d
+Arguments = %(ntrials_per)s %(seed)d %(output)s %(logfile)s
 Queue
 """
 
@@ -514,7 +513,7 @@ class SLRMakerShifter(MakerBase):
         # ncores includes the admiral
         ncores = self['nodes']*cores_per_node
 
-        gals_per_job = files.get_gals_per_job_mpi(
+        gals_per_job = util.get_trials_per_job_mpi(
             njobs, self['ntrials'],
         )
 
@@ -597,7 +596,7 @@ class CondorMaker(MakerBase):
 
         filenum=0
 
-        ntrials_per, nsplit, time_hours = files.get_gal_nsplit(self)
+        ntrials_per, nsplit, time_hours = util.get_trials_nsplit(self)
         self['ntrials_per'] = ntrials_per
 
 
@@ -619,9 +618,9 @@ class CondorMaker(MakerBase):
                 if fobj is not None:
                     fobj.close()
 
-                subfile=files.get_condor_submit_script(
+                subfile=files.get_condor_job_url(
                     self['run'],
-                    chunk=icondor,
+                    icondor,
                 )
                 icondor+=1
 

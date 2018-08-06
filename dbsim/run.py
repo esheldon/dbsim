@@ -23,6 +23,8 @@ def go(sim_conf,
     fitseed=rng.randint(0,2**30)
     fitrng = np.random.RandomState(fitseed)
 
+    fof_conf=fit_conf['fofs']
+
     sim=simulation.Sim(sim_conf, rng)
 
     fclass=get_fitclass(fit_conf)
@@ -44,11 +46,15 @@ def go(sim_conf,
 
         tm0=time.time()
         sim.make_obs()
-        mbobs_list = sim.get_mbobs_list(weight_type=weight_type)
+        if fof_conf['find_fofs']:
+            mbobs_list = sim.get_fofs(fof_conf, weight_type=weight_type,
+                                      show=show)
+        else:
+            mbobs_list = sim.get_mbobs_list(weight_type=weight_type)
+
         tm_sim += time.time()-tm0
         nsim += 1
 
-        logger.debug("    found %d objects" % len(mbobs_list))
         if show:
             sim.show()
             if 'q'==input('hit a key (q to quit): '):
@@ -58,17 +64,18 @@ def go(sim_conf,
             logger.debug("no objects detected")
         else:
 
-
-            tm0=time.time()
-            res=fitter.go(mbobs_list)
-            tm_fit += time.time()-tm0
-            nfit += 1
-            nobj_detected += len(mbobs_list)
-
-            if res is None:
-                logger.debug("failed to fit")
+            if fof_conf['find_fofs']:
+                # mbobs_list is really a list of those
+                reslist, nobj, tm = run_fofs(fitter, mbobs_list)
             else:
-                datalist.append(res)
+                reslist, nobj, tm = run_one_fof(fitter, mbobs_list)
+
+            nobj_detected += nobj
+            datalist += reslist
+            tm_fit += tm
+
+            if nobj > 0:
+                nfit += 1
 
     elapsed_time=time.time()-tm0_main
     nkept = len(datalist)
@@ -78,19 +85,60 @@ def go(sim_conf,
         nkept, elapsed_time, tm_sim, tm_fit,
     )
 
-    print("kept: %d/%d %.2f" % (nkept,ntrials,float(nkept)/ntrials))
-    print("time minutes:",meta['tm_minutes'][0])
-    print("time per trial:",meta['tm_per_trial'][0])
-    print("time per sim:",meta['tm_per_sim'][0])
+    logger.info("kept: %d/%d %.2f" % (nkept,ntrials,float(nkept)/ntrials))
+    logger.info("time minutes: %g" % meta['tm_minutes'][0])
+    logger.info("time per trial: %g" % meta['tm_per_trial'][0])
+    logger.info("time per sim: %g" % meta['tm_per_sim'][0])
     if nfit > 0:
-        print("time per fit:",meta['tm_per_fit'][0])
-        print("time fit per detected object:",meta['tm_per_obj_detected'][0])
+        logger.info("time per fit: %g" % meta['tm_per_fit'][0])
+        logger.info("time fit per detected object: %g" % meta['tm_per_obj_detected'][0])
 
     if nkept == 0:
         logger.info("no results to write")
     else:
         data = eu.numpy_util.combine_arrlist(datalist)
         write_output(output_file, data, meta)
+
+def run_fofs(fitter, fof_mbobs_lists):
+    """
+    run all fofs that were found
+    """
+    datalist=[]
+    nobj=0
+    tm=0.0
+
+    nfofs=len(fof_mbobs_lists)
+    logger.debug("processing: %d fofs" % nfofs)
+    for i,mbobs_list in enumerate(fof_mbobs_lists):
+        logger.debug("    fof: %d/%d has %d members" % (i+1,nfofs,len(mbobs_list)))
+        reslist, t_nobj, t_tm = run_one_fof(fitter, mbobs_list)
+
+        nobj += t_nobj
+        tm += t_tm
+        datalist += reslist
+
+    return datalist, nobj, tm
+
+def run_one_fof(fitter, mbobs_list):
+    """
+    running on a set of objects
+    """
+
+    nobj = len(mbobs_list)
+    logger.debug("    found %d objects" % nobj)
+
+    datalist=[]
+    tm0=time.time()
+    if nobj > 0:
+
+        res=fitter.go(mbobs_list)
+        if res is None:
+            logger.debug("failed to fit")
+        else:
+            datalist.append(res)
+    tm = time.time()-tm0
+
+    return datalist, nobj, tm
 
 def make_meta(ntrials, nsim, nfit, nobj_detected, nkept, elapsed_time, tm_sim, tm_fit):
     dt=[

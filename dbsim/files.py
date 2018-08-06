@@ -69,7 +69,7 @@ def get_condor_job_url(run, filenum):
     """
     d=get_condor_dir(run)
 
-    fname='%(run)s-%(filenum)06d.condor' % {
+    fname='%(run)s-%(filenum)02d.condor' % {
         'run':run,
         'filenum':filenum,
     }
@@ -191,6 +191,14 @@ def get_output_dir(run):
     dir=get_run_dir(run)
     return os.path.join(dir, 'outputs')
 
+def get_collated_dir(run):
+    """
+    output directory
+    """
+    dir=get_run_dir(run)
+    return os.path.join(dir, 'collated')
+
+
 def get_output_url(run, filenum):
     """
     path to output file
@@ -202,6 +210,16 @@ def get_output_url(run, filenum):
         'filenum':filenum,
     }
     return os.path.join(dir, fname)
+
+def get_collated_url(run):
+    """
+    path to collated file
+    """
+    dir=get_collated_dir(run)
+
+    fname='%s.fits' % run
+    return os.path.join(dir, fname)
+
 
 def get_means_dir(run):
     """

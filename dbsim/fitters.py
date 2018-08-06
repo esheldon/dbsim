@@ -139,23 +139,27 @@ class MOFFitter(FitterBase):
             Array with all output fields
         """
 
-        self._fit_all_psfs(mbobs_list, self['mof']['psf'])
+        try:
+            self._fit_all_psfs(mbobs_list, self['mof']['psf'])
 
-        mofc = self['mof']
-        fitter = mof.MOFStamps(
-            mbobs_list,
-            mofc['model'],
-            prior=self.mof_prior,
-        )
-        guess=mof.moflib.get_stamp_guesses(
-            mbobs_list,
-            mofc['detband'],
-            mofc['model'],
-            self.rng,
-        )
-        fitter.go(guess)
+            mofc = self['mof']
+            fitter = mof.MOFStamps(
+                mbobs_list,
+                mofc['model'],
+                prior=self.mof_prior,
+            )
+            guess=mof.moflib.get_stamp_guesses(
+                mbobs_list,
+                mofc['detband'],
+                mofc['model'],
+                self.rng,
+            )
+            fitter.go(guess)
 
-        res=fitter.get_result()
+            res=fitter.get_result()
+        except BootPSFFailure as err:
+            print(str(err))
+            res={'flags':1}
 
         if res['flags'] != 0:
             data=None
