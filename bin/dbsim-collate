@@ -1,0 +1,11 @@
+#!/usr/bin/env python
+import dbsim
+
+from argparse import ArgumentParser
+parser=ArgumentParser()
+
+parser.add_argument('run',help="run name")
+
+if __name__ == '__main__':
+    args=parser.parse_args()
+    dbsim.collate.collate_trials(args.run)

@@ -1,0 +1,83 @@
+#!/usr/bin/env python
+from __future__ import print_function
+
+from dbsim.averaging import Summer
+
+import argparse
+import esutil as eu
+from esutil.numpy_util import between
+
+
+fclass=argparse.ArgumentDefaultsHelpFormatter
+parser=argparse.ArgumentParser(formatter_class=fclass)
+
+parser.add_argument('runs', help='run or name of runs config for multiple runs')
+parser.add_argument('--index',default=None,type=int,
+                    help='just do sums on one output file')
+
+parser.add_argument('--select',default=None,
+            help='read the selection from the indicated selection config')
+
+parser.add_argument('-d',default=None,help='file is in a local dir')
+
+parser.add_argument('--ntest',default=None,type=int,
+                    help='work on a small subset for quick tests')
+
+parser.add_argument('--nsigma',default=3.0,type=float,
+                    help='number sigma error bars to print')
+
+parser.add_argument(
+    '--weighted',
+    action='store_true',
+)
+
+parser.add_argument(
+    '--weight-type',
+    default='noise',
+)
+
+parser.add_argument('--preselect',action='store_true',help='preselect s2n_true > 5')
+
+parser.add_argument('--force',action='store_true',help='force redo of sums')
+
+parser.add_argument('--corr-psf-orig',action='store_true',help='apply selection correction based on original psf')
+
+parser.add_argument('--etype',action='store_true',help='shapes are e type')
+
+parser.add_argument('--s2n-soft',type=float,default=10.0)
+parser.add_argument('--shapenoise',type=float,default=0.20)
+
+parser.add_argument('--show',action='store_true',help='show plot')
+parser.add_argument('--yrange', help="yrange of plot")
+parser.add_argument('--xrange', help="xrange of plot")
+
+parser.add_argument('--fit-only',action='store_true',
+                    help='get the means from the written file')
+
+parser.add_argument('--chunksize',type=int,default=1000000,
+                    help='size of chunks when reading')
+
+parser.add_argument('--moments',action='store_true',
+                    help='do fits for moment based measure')
+parser.add_argument('--moments-nonorm',action='store_true',
+                    help='do fits for moment based measure')
+
+parser.add_argument('--cache',action='store_true',
+                    help='use local disk cache')
+
+parser.add_argument('--R',help='input R')
+parser.add_argument('--Rselect',help='input R select')
+
+def main():
+    args = parser.parse_args()
+
+    summer=Summer(args)
+
+    summer.go()
+
+    summer.plot_fits()
+    summer.plot_resid_hist()
+
+    return
+
+main()
