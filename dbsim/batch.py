@@ -365,7 +365,7 @@ class MakerBase(dict):
 
 
         print('total jobs: ',njobs)
-        print('total gals:',ntrials_tot)
+        print('total trials:',ntrials_tot)
 
 
     def write_script(self, filenum):
@@ -513,11 +513,11 @@ class SLRMakerShifter(MakerBase):
         # ncores includes the admiral
         ncores = self['nodes']*cores_per_node
 
-        gals_per_job = util.get_trials_per_job_mpi(
+        trials_per_job = util.get_trials_per_job_mpi(
             njobs, self['ntrials'],
         )
 
-        hours = gals_per_job*self['sec_per']/3600.0
+        hours = trials_per_job*self['sec_per']/3600.0
 
         calculated_walltime = get_walltime(hours)
         if 'walltime' not in self:
@@ -534,7 +534,7 @@ class SLRMakerShifter(MakerBase):
         #self['walltime'] = '%02d:%02d:%02d' % (hours_int, minutes_int, seconds_int)
         self['ncores']   = ncores
         self['njobs']    = njobs
-        self['ntrials_per'] = gals_per_job
+        self['ntrials_per'] = trials_per_job
         self['job_name'] = self['run']
 
         print("total cpu hours:",round(hours*ncores))
@@ -648,7 +648,7 @@ class CondorMaker(MakerBase):
 
 
         print('total jobs: ',njobs)
-        print('total gals:',ntrials_tot)
+        print('total trials:',ntrials_tot)
 
 
 

@@ -9,6 +9,7 @@ class CosmosSampler(object):
                  min_flux=0.5,
                  max_flux=100,
                  kde_factor=0.01,
+                 flux_mult=None,
                  rng=None):
         # Make sure required dependencies are checked right away, so the user gets timely
         # feedback of what this code requires.
@@ -22,6 +23,7 @@ class CosmosSampler(object):
         self.rng=rng
         self.r50_range = (min_r50, max_r50)
         self.flux_range = (min_flux, max_flux)
+        self.flux_mult=flux_mult
 
         self.r50_sanity_range=0.05,2.0
         self.flux_sanity_range=0.5,100.0
@@ -68,6 +70,9 @@ class CosmosSampler(object):
                 ngood += w.size
                 nleft -= w.size
 
+        if self.flux_mult is not None:
+            data[:,1] *= self.flux_mult
+            
         if is_scalar:
             data=data[0,:]
 

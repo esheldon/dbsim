@@ -2,7 +2,7 @@ import sys
 import os
 import shutil
 from pprint import pprint
-import numpy
+import numpy as np
 from numpy import sqrt, array, diag, ones, zeros
 from numpy import where, newaxis, exp, log
 from numpy import newaxis
@@ -95,7 +95,7 @@ class Summer(dict):
             means=get_mean_struct(self['nshear'])
             means_nocorr=get_mean_struct(self['nshear'])
             
-            wkeep,=numpy.where(sums['wsum'] > 0)
+            wkeep,=where(sums['wsum'] > 0)
             print("total wsum:",sums['wsum'].sum())
 
             for i in range(self['nshear']):
@@ -228,7 +228,7 @@ class Summer(dict):
                         if 'shear_index' not in data.dtype.names:
                             data=self._add_shear_index(data)
                         else:
-                            w,=numpy.where(data['shear_index']==-1)
+                            w,=where(data['shear_index']==-1)
                             if w.size > 0:
                                 data['shear_index'][w]=0
 
@@ -269,10 +269,8 @@ class Summer(dict):
         sums_file=self._get_sums_file(run)
 
         if not os.path.exists(sums_file):
-            sums_file=self._get_sums_file(run, use_select_string=True)
-            if not os.path.exists(sums_file):
-                print("sums file not found:",sums_file)
-                return None
+            print("sums file not found:",sums_file)
+            return None
 
         print("reading cached sums file:",sums_file)
         sums = fitsio.read(sums_file)
@@ -284,7 +282,7 @@ class Summer(dict):
         """
         
         if self.args.preselect:
-            w,=numpy.where(data['s2n_true'] > 5)
+            w,=where(data['s2n_true'] > 5)
             print("kept %d/%d in preselect" % (w.size, data.size))
             data=data[w]
  
@@ -300,9 +298,9 @@ class Summer(dict):
             wts=get_noise_weights(g_cov, self.args)
 
         else:
-            wts=numpy.ones(w.size)
+            wts=ones(w.size)
 
-        wa = wts[:,numpy.newaxis]
+        wa = wts[:,newaxis]
         return wts, wa
 
     def _get_g(self, data, w, type):
@@ -585,59 +583,15 @@ class Summer(dict):
 
         n=self.get_namer(type)
 
-        s2n=self._get_s2n(n, data, w)
-        s2n_true=self._get_s2n_true(n, data, w)
-        size=self._get_size(n, data, w)
-        flux=self._get_flux(n, data, w)
-        am_flux=self._get_am_flux(n, data, w)
-        am_flux_s2n=self._get_am_flux_s2n(n, data, w)
-        flux_true=self._get_flux_true(data, w)
 
-        T = self._get_T(n, data, w)
-
-        Tpsf = self._get_psf_T(data, w)
-
-        if Tpsf is not None:
-            Tratio = T/Tpsf
-
-        if n('flux_s2n') in data.dtype.names:
-            flux_s2n = self._get_flux_s2n(n, data, w)
+        s2n      = self._get_s2n(n, data, w)
+        flux_s2n = self._get_flux_s2n(n, data, w)
+        T        = self._get_T(n, data, w)
+        Tratio   = self._get_T_ratio(n, data, w)
 
         logic=eval(self.select)
-        if self['simc']['do_ring']:
-            w=util.ring_select(logic)
-        else:
-            w,=numpy.where(logic)
+        w,=where(logic)
         return w
-
-    def _get_s2n_name(self, n, data):
-
-        if n('s2n_r') in data.dtype.names:
-            name=n('s2n_r')
-        elif n('s2n') in data.dtype.names:
-            name=n('s2n')
-        elif n('s2n_w') in data.dtype.names:
-            print("Using s2n_w for selections")
-            name=n('s2n_w')
-        else:
-            name=None
-
-        return name
-
-    def _get_T(self, n, data, w):
-
-        d = None
-        for ntry in ['T_r','T','pars']:
-            name = n(ntry)
-            if name in data.dtype.names:
-
-                if ntry=='pars':
-                    d = data[name][w,4]
-                else:
-                    d = data[name][w]
-                break
-
-        return d
 
     def _get_psf_T(self, data, w):
         ns=['mcal_psfrec_T','mcal_Tpsf']
@@ -650,71 +604,26 @@ class Summer(dict):
 
 
     def _get_s2n(self, n, data, w):
-        name=self._get_s2n_name(n, data)
-        if name is None:
-            return None
-
+        name=n('s2n')
         return data[name][w]
 
-    def _get_s2n_true(self, n, data, w):
-        if 's2n_true' in data.dtype.names:
-            return data['s2n_true'][w]
-        else:
-            return None
+    def _get_T(self, n, data, w):
+        name=n('T')
+        return data[name][w]
 
+    def _get_T_ratio(self, n, data, w):
+        name=n('T_ratio')
+        return data[name][w]
 
-    def _get_size(self, n, data, w):
-        name=n('pars')
-
-        size=None
-        if name in data.dtype.names:
-            if data[name].shape[1] >= 6:
-                size = data[name][w,4]
-
-        return size
-
-    def _get_flux(self, n, data, w):
+    def _get_flux_and_err(self, n, data, w):
         name=n('flux')
-
-        if name in data.dtype.names:
-            flux = data[name][w]
-        else:
-            flux=None
-
-        return flux
-
-    def _get_am_flux(self, n, data, w):
-        name=n('am_flux')
-
-        if name in data.dtype.names:
-            flux = data[name][w]
-        else:
-            flux=None
-
-        return flux
-
-    def _get_am_flux_s2n(self, n, data, w):
-        name=n('am_flux_s2n')
-
-        if name in data.dtype.names:
-            flux = data[name][w]
-        else:
-            flux=None
-
-        return flux
-
-
-
-    def _get_flux_true(self, data, w):
-        if 'flux_true' in data.dtype.names:
-            return data['flux_true'][w]
-        else:
-            return None
-
+        errname=n('flux_err')
+        return data[name][w], data[errname][w]
 
     def _get_flux_s2n(self, n, data, w):
-        name=n('flux_s2n')
-        return data[name][w]
+        fluxes, errors = self._get_flux_and_err(n, data, w)
+        s2ns = errors/fluxes
+        return sqrt( (s2ns**2).sum(axis=1) )
 
     def _read_means(self):
         fname=self._get_means_file()
@@ -735,7 +644,7 @@ class Summer(dict):
         fitsio.write(fname, sums, clobber=True)
 
 
-    def _get_fname_extra(self, last=None, run=None, use_select_string=False):
+    def _get_fname_extra(self, last=None, run=None):
 
         # name will be singular if we use args.runs
         if run is None:
@@ -755,11 +664,7 @@ class Summer(dict):
             extra += ['preselect']
 
         if self.args.select is not None:
-            if use_select_string:
-                s=self.select.replace(' ','-').replace('(','').replace(')','').replace('[','').replace(']','').replace('"','').replace("'",'')
-                extra += ['select',s]
-            else:
-                extra += [self.args.select]
+            extra += [self.args.select]
 
         if self.args.ntest is not None:
             extra += ['test%d' % self.args.ntest]
@@ -786,11 +691,10 @@ class Summer(dict):
         fname=files.get_means_url(self.args.runs, extra=extra)
         return fname
 
-    def _get_sums_file(self, run, use_select_string=False):
+    def _get_sums_file(self, run):
 
         extra=self._get_fname_extra(
             run=run,
-            use_select_string=use_select_string,
         )
         fname=files.get_sums_url(run, extra=extra)
         return fname
@@ -809,7 +713,7 @@ class Summer(dict):
 
     def _get_sums_struct(self):
         dt=self._get_sums_dt()
-        return numpy.zeros(self['nshear'], dtype=dt)
+        return zeros(self['nshear'], dtype=dt)
 
     def _get_sums_dt(self):
         dt=[
@@ -963,7 +867,7 @@ class Summer(dict):
             plt = biggles.plot_hist(diff, nbin=20, visible=False,
                                    xlabel=r'$\gamma - \gamma_{True}$')
 
-            dmax=numpy.abs(diff).max() 
+            dmax=np.abs(diff).max() 
             plt.xrange=[-1.3*dmax, 1.3*dmax]
 
             fname=self._get_resid_hist_file()
@@ -987,10 +891,10 @@ def _calculateSvalues(xarr, yarr, sigma2=1.):
         raise ValueError("Input arrays must have 2 or more values elements.")
 
     S = len(xarr) / sigma2
-    Sx = numpy.sum(xarr / sigma2)
-    Sy = numpy.sum(yarr / sigma2)
-    Sxx = numpy.sum(xarr * xarr / sigma2)
-    Sxy = numpy.sum(xarr * yarr / sigma2)
+    Sx = np.sum(xarr / sigma2)
+    Sy = np.sum(yarr / sigma2)
+    Sxx = np.sum(xarr * xarr / sigma2)
+    Sxy = np.sum(xarr * yarr / sigma2)
     return (S, Sx, Sy, Sxx, Sxy)
 
 def fitline(xarr, yarr):
@@ -1010,14 +914,14 @@ def fitline(xarr, yarr):
     b = (S * Sxy - Sx * Sy) / Del
     # Use these to estimate the sigma^2 by residuals from the best-fitting model
     ymodel = a + b * xarr
-    sigma2 = numpy.mean((yarr - ymodel)**2)
+    sigma2 = np.mean((yarr - ymodel)**2)
     # And use this to get model parameter error estimates
     var_a  = sigma2 * Sxx / Del
     cov_ab = - sigma2 * Sx / Del
     var_b  = sigma2 * S / Del
 
-    a_err = numpy.sqrt(var_a)
-    b_err = numpy.sqrt(var_b)
+    a_err = sqrt(var_a)
+    b_err = sqrt(var_b)
 
     return {'offset':a,
             'offset_err':a_err,
@@ -1030,8 +934,8 @@ def fitline_zero_offset(x, y):
 
     # Our model is y = a * x, so things are quite simple, in this case...
     # x needs to be a column vector instead of a 1D vector for this, however.
-    x = x[:,numpy.newaxis]
-    a, _, _, _ = numpy.linalg.lstsq(x, y)
+    x = x[:,newaxis]
+    a, _, _, _ = np.linalg.lstsq(x, y)
 
     return {'offset':0.0,
             'offset_err':0.0,
@@ -1057,7 +961,7 @@ def plot_line_fit(args, extra, x, y, res, xlabel, ylabel, label_error=True):
     plt.ylabel=ylabel
     plt.aspect_ratio=1
 
-    xfit = numpy.linspace(0, xr[1])
+    xfit = np.linspace(0, xr[1])
     yfit = res['offset'] + res['slope']*xfit
 
     pts = biggles.Points(x,y,type='filled circle')
@@ -1095,14 +999,10 @@ def print_Rs(R, Rerr, Rpsf, Rpsf_err, type=''):
             print(p % (n,R[i,j],Rerr[i,j]))
 
 def get_s2n_weights_old(s2n, args):
-    #return numpy.ones(s2n.size)
-    #print("s2n soft:",args.s2n_soft)
     wts = 1.0/(1.0 + (args.s2n_soft/s2n)**2 )
     return wts
 
 def get_s2n_weights(s2n, args):
-    #return numpy.ones(s2n.size)
-    #print("s2n soft:",args.s2n_soft)
     sigma=5.0
     x=zeros(s2n.size)
     wts=zeros(s2n.size)
@@ -1118,16 +1018,16 @@ def get_s2n_weights(s2n, args):
 
 def get_noise_weights(g_cov, args):
 
-    wts=numpy.zeros(g_cov.shape[0])
+    wts=zeros(g_cov.shape[0])
 
     g00=g_cov[:,0,0]
     g11=g_cov[:,1,1]
 
-    w,=numpy.where( numpy.isfinite(g00) & numpy.isfinite(g11) )
+    w,=where( np.isfinite(g00) & np.isfinite(g11) )
     wts[w] = 1.0/(2*args.shapenoise**2 + g00[w] + g11[w] )
 
     '''
-    w,=numpy.where( numpy.isnan(wts) )
+    w,=where( np.isnan(wts) )
     if w.size > 0:
         print("fixing %d/%d isnan" % (w.size, g_cov.shape[0]))
         wts[w] = 0.0
@@ -1140,14 +1040,14 @@ def get_mean_struct(n):
         ('shear_true','f8',2),
         ('shear_err','f8',2)]
 
-    means = numpy.zeros(n, dtype=dt)
+    means = zeros(n, dtype=dt)
     return means
 
 def get_boot_struct(nboot):
     dt=[('m','f8',2),
         ('c','f8',2)]
 
-    bs = numpy.zeros(nboot, dtype=dt)
+    bs = zeros(nboot, dtype=dt)
     return bs
 
 def get_m_c_oneshear(data, nsig=2.0):
@@ -1156,7 +1056,7 @@ def get_m_c_oneshear(data, nsig=2.0):
     shtrue = data['shear_true'][0]
 
 
-    fits=numpy.zeros(1, dtype=[('m','f8'),
+    fits=zeros(1, dtype=[('m','f8'),
                                ('merr','f8'),
                                ('c','f8'),
                                ('cerr','f8')])
@@ -1173,7 +1073,7 @@ def get_m_c_oneshear(data, nsig=2.0):
 
     print("errors are %g sigma" % nsig)
 
-    fits=numpy.zeros(1, dtype=[('m','f8'),
+    fits=zeros(1, dtype=[('m','f8'),
                                ('merr','f8'),
                                ('c','f8'),
                                ('cerr','f8')])
@@ -1226,14 +1126,14 @@ def fit_m_c(data, doprint=True, onem=False, max_shear=None, nocorr_select=False,
         serr=serr[w,:]
 
 
-    m = numpy.zeros(2)
-    merr = numpy.zeros(2)
-    c = numpy.zeros(2)
-    cerr = numpy.zeros(2)
+    m = zeros(2)
+    merr = zeros(2)
+    c = zeros(2)
+    cerr = zeros(2)
 
     print("errors are %g sigma" % nsig)
     if onem:
-        fits=numpy.zeros(1, dtype=[('m','f8'),
+        fits=zeros(1, dtype=[('m','f8'),
                                    ('merr','f8'),
                                    ('c1','f8'),
                                    ('c1err','f8'),
@@ -1260,7 +1160,7 @@ def fit_m_c(data, doprint=True, onem=False, max_shear=None, nocorr_select=False,
             print('  c2: %.3e +/- %.3e' % (pars[2],nsig*perr[2]))
         return fits
 
-    fits=numpy.zeros(1, dtype=[('m','f8',2),
+    fits=zeros(1, dtype=[('m','f8',2),
                                ('merr','f8',2),
                                ('c','f8',2),
                                ('cerr','f8',2),
@@ -1270,7 +1170,7 @@ def fit_m_c(data, doprint=True, onem=False, max_shear=None, nocorr_select=False,
 
         #c, c_err, m, m_err, covar = fitline(strue[:,i], sdiff[:,i])
         res = fitline(strue[:,i], sdiff[:,i])
-        r = res['cov']/numpy.sqrt(res['slope_err']**2 * res['offset_err']**2)
+        r = res['cov']/sqrt(res['slope_err']**2 * res['offset_err']**2)
         fits['m'][0,i] = res['slope']
         fits['merr'][0,i] = res['slope_err']
         fits['c'][0,i] = res['offset']

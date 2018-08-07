@@ -152,6 +152,7 @@ class Sim(dict):
         show a nice image of the simulation
         """
         import images
+        #images.view(self.obs[2][0].image)
         rgb=self.get_color_image()
         images.view(rgb/rgb.max())
 
@@ -194,7 +195,9 @@ class Sim(dict):
         c=self['pdfs']['hlr_flux']
         assert c['type']=='cosmos'
 
-        return CosmosSampler(rng=self.rng)
+        flux_mult=c.get('flux_mult',None)
+
+        return CosmosSampler(rng=self.rng, flux_mult=flux_mult)
 
     def _make_bulge_pdfs(self):
         self.bulge_hlr_frac_pdf=self._make_bulge_hlr_frac_pdf()
@@ -348,6 +351,8 @@ class Sim(dict):
         nobj=self['nobj']
         if isinstance(nobj,dict):
             nobj = self.rng.poisson(lam=nobj['mean'])
+            if nobj < 1:
+                nobj=1
         else:
             nobj=self['nobj']
 
@@ -476,6 +481,7 @@ class Sim(dict):
             convolved_objects = galsim.Convolve(objects, self.psf)
 
             kw={'scale':self['pixel_scale']}
+            kw['method'] = self['draw_method']
 
             dims = self.get('dims',None)
             if dims is not None:

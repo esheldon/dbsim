@@ -70,6 +70,7 @@ def go(sim_conf,
             else:
                 reslist, nobj, tm = run_one_fof(fitter, mbobs_list)
 
+            logger.debug("    processed %d objects" % nobj)
             nobj_detected += nobj
             datalist += reslist
             tm_fit += tm
@@ -125,7 +126,6 @@ def run_one_fof(fitter, mbobs_list):
     """
 
     nobj = len(mbobs_list)
-    logger.debug("    found %d objects" % nobj)
 
     datalist=[]
     tm0=time.time()
