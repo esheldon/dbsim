@@ -149,7 +149,13 @@ class Sim(dict):
                 )
             )
 
-        return mof.stamps.MEDSifier(dlist)
+        sx_config=self.get('sx',None)
+        meds_config=self.get('meds',None)
+        return mof.stamps.MEDSifier(
+            dlist,
+            sx_config=sx_config,
+            meds_config=meds_config,
+        )
 
     def show(self):
         """
