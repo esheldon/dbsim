@@ -27,17 +27,10 @@ class Summer(dict):
         self._load_config()
         self._load_shear_pdf()
 
-        self.chunksize=args.chunksize
-
         self._set_select()
 
         self.gpsf_name='mcal_psfrec_g'
         self.gpsf_orig_name='psfrec_g'
-
-        if args.R is not None:
-            self.Rinput = array([float(R) for R in args.R.split(',')])
-        if args.Rselect is not None:
-            self.Rselect_input = array([float(R) for R in args.Rselect.split(',')])
 
     def _load_config(self):
         args=self.args
@@ -86,7 +79,7 @@ class Summer(dict):
             self.means=self._read_means()
         else:
 
-            sums = self.do_sums()
+            sums = self.do_sums_all_runs()
 
             args=self.args
 
@@ -112,10 +105,6 @@ class Summer(dict):
                 gmean_err = gerr[i]
 
                 c        = (Rpsf+Rsel_psf)*gpsf[i]
-
-                if self.args.corr_psf_orig:
-                    print("correcting for orig psf",gpsf_orig[i])
-                    c += Rsel_psf*gpsf_orig[i]
 
                 c_nocorr = Rpsf*gpsf[i]
 
@@ -171,21 +160,12 @@ class Summer(dict):
         """
 
         fname = files.get_collated_url(run)
-        if self.args.cache:
-            origname=fname
-            bname = os.path.basename(origname)
-            fname=os.path.join('$TMPDIR', bname)
-            fname=os.path.expandvars(fname)
-            if not os.path.exists(fname):
-                print("copying to cache: %s -> %s" % (origname,fname))
-                shutil.copy(origname, fname)
-
         return fname
 
-    def do_sums(self):
+    def do_sums_all_runs(self):
 
         args=self.args
-        chunksize=self.chunksize
+        chunksize=self.args.chunksize
 
         sums=None
         ntot=0
@@ -195,10 +175,10 @@ class Summer(dict):
 
             run_sums=self._try_read_sums(run)
 
-            if args.force or run_sums is None:
+            if run_sums is None:
                 # no cache found, we need to do the sums
 
-                run_sums=self._get_sums_struct()
+                run_sums=self.get_sums_struct()
 
                 fname=self.get_run_output(run)
                 print(fname)
@@ -222,9 +202,6 @@ class Summer(dict):
 
                         data = hdu[beg:end]
 
-                        if args.index is not None:
-                            data = self._add_true_shear(data)
-
                         if 'shear_index' not in data.dtype.names:
                             data=self._add_shear_index(data)
                         else:
@@ -243,12 +220,35 @@ class Summer(dict):
                         if args.ntest is not None and ntot > args.ntest:
                             break
 
-                self._write_sums(run, run_sums)
+                self.write_sums(run, run_sums)
 
             if sums is None:
                 sums=run_sums.copy()
             else:
                 sums=add_sums(sums, run_sums)
+
+        return sums
+
+    def do_file_sums(self, fname):
+        """
+        get sums for a single file
+        """
+
+        sums=self.get_sums_struct()
+
+        print("processing:",fname)
+        data=fitsio.read(fname) 
+
+        if 'shear_index' not in data.dtype.names:
+            data=self._add_shear_index(data)
+        else:
+            w,=where(data['shear_index']==-1)
+            if w.size > 0:
+                data['shear_index'][w]=0
+
+        data=self._preselect(data)
+
+        sums=self.do_sums1(data)
 
         return sums
 
@@ -266,7 +266,7 @@ class Summer(dict):
         return new_data
 
     def _try_read_sums(self, run):
-        sums_file=self._get_sums_file(run)
+        sums_file=self.get_sums_file(run)
 
         if not os.path.exists(sums_file):
             print("sums file not found:",sums_file)
@@ -291,14 +291,7 @@ class Summer(dict):
 
     def _get_weights(self, data, w, type):
 
-        if self.args.weighted:
-
-            g_cov_name=self.get_name('g_cov',type)
-            g_cov=data[g_cov_name][w]
-            wts=get_noise_weights(g_cov, self.args)
-
-        else:
-            wts=ones(w.size)
+        wts=ones(w.size)
 
         wa = wts[:,newaxis]
         return wts, wa
@@ -356,7 +349,7 @@ class Summer(dict):
         assert nshear==nind
 
         if sums is None:
-            sums=self._get_sums_struct()
+            sums=self.get_sums_struct()
 
         ntot=0
         nkeep=0
@@ -450,10 +443,6 @@ class Summer(dict):
                             sums[sumname][i] += (g*wa).sum(axis=0)
                             sums[wsumname][i] += wts.sum()
 
-        if self.args.weighted:
-            effnum=wttot/wtmax/ntot
-            print("        effective fraction: %g" % effnum)
-
         if self.select is not None:
             self._print_frac(ntot,nkeep)
         return sums
@@ -521,16 +510,6 @@ class Summer(dict):
         Rpsf[0] = (g1p_psf - g1m_psf)*factor
         Rpsf[1] = (g2p_psf - g2m_psf)*factor
 
-        #Rmean = R.mean()
-        #R[:] = Rmean
-        #R[0] = R[1]
-        #R[:] = R[1]
-        #R *= (-1)
-        #R[:]=1
-
-        if self.args.etype:
-            Rpsf *= 0.5
-            #Rpsf *= (0.01/0.019998000199980003)
         print("R:",R)
         print("Rpsf:",Rpsf)
 
@@ -555,20 +534,9 @@ class Summer(dict):
                 Rsel_psf[0] = (s_g1p_psf - s_g1m_psf)*factor
                 Rsel_psf[1] = (s_g2p_psf - s_g2m_psf)*factor
 
-                if self.args.etype:
-                    Rsel_psf *= 0.5
-                    #Rsel_psf *= (0.01/0.019998000199980003)
-
             print()
             print("Rsel:",Rsel)
             print("Rpsf_sel:",Rsel_psf)
-
-        if self.args.R is not None:
-            print("ignoring calculated R, using input")
-            R = self.Rinput
-            Rsel = self.Rselect_input
-            print("R:",R)
-            print("Rsel:",Rsel)
 
         return g, gerr, gpsf, gpsf_orig, R, Rpsf, Rsel, Rsel_psf
 
@@ -637,8 +605,8 @@ class Summer(dict):
         fitsio.write(fname, self.means, extname="corr", clobber=True)
         fitsio.write(fname, self.means_nocorr, extname="nocorr")
 
-    def _write_sums(self, run, sums):
-        fname=self._get_sums_file(run)
+    def write_sums(self, run, sums):
+        fname=self.get_sums_file(run)
         eu.ostools.makedirs_fromfile(fname)
         print("writing:",fname)
         fitsio.write(fname, sums, clobber=True)
@@ -657,9 +625,6 @@ class Summer(dict):
         #else:
         extra=[]
 
-        if self.args.weighted:
-            extra += ['weighted',self.args.weight_type]
-
         if self.args.preselect:
             extra += ['preselect']
 
@@ -671,9 +636,6 @@ class Summer(dict):
 
         if last is not None:
             extra += [last]
-
-        if self.args.index is not None:
-            extra += ['%06d' % self.args.index]
 
         if len(extra) > 0:
             extra = '-'.join(extra)
@@ -691,14 +653,13 @@ class Summer(dict):
         fname=files.get_means_url(self.args.runs, extra=extra)
         return fname
 
-    def _get_sums_file(self, run):
+    def get_sums_file(self, run):
 
         extra=self._get_fname_extra(
             run=run,
         )
         fname=files.get_sums_url(run, extra=extra)
         return fname
-
 
     def _get_fit_plot_file(self):
         extra=self._get_fname_extra(last='fit-m-c')
@@ -711,7 +672,7 @@ class Summer(dict):
         return fname
 
 
-    def _get_sums_struct(self):
+    def get_sums_struct(self):
         dt=self._get_sums_dt()
         return zeros(self['nshear'], dtype=dt)
 
@@ -766,12 +727,8 @@ class Summer(dict):
         if self.args.select is not None:
             self.do_selection=True
 
-            d = files.read_config_file(self.args.select)
+            d = files.read_config_file('select-'+self.args.select)
             self.select = d['select'].strip()
-
-        elif self.args.weighted:
-            self.do_selection=True
-
 
     def plot_fits(self):
 
@@ -998,10 +955,6 @@ def print_Rs(R, Rerr, Rpsf, Rpsf_err, type=''):
             n='R%s[%d,%d]' % (type,(i+1),(j+1))
             print(p % (n,R[i,j],Rerr[i,j]))
 
-def get_s2n_weights_old(s2n, args):
-    wts = 1.0/(1.0 + (args.s2n_soft/s2n)**2 )
-    return wts
-
 def get_s2n_weights(s2n, args):
     sigma=5.0
     x=zeros(s2n.size)
@@ -1013,25 +966,6 @@ def get_s2n_weights(s2n, args):
 
     wts += 1.0
     wts *= 0.5
-    return wts
-
-
-def get_noise_weights(g_cov, args):
-
-    wts=zeros(g_cov.shape[0])
-
-    g00=g_cov[:,0,0]
-    g11=g_cov[:,1,1]
-
-    w,=where( np.isfinite(g00) & np.isfinite(g11) )
-    wts[w] = 1.0/(2*args.shapenoise**2 + g00[w] + g11[w] )
-
-    '''
-    w,=where( np.isnan(wts) )
-    if w.size > 0:
-        print("fixing %d/%d isnan" % (w.size, g_cov.shape[0]))
-        wts[w] = 0.0
-    '''
     return wts
 
 

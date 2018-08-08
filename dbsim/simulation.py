@@ -41,6 +41,10 @@ class Sim(dict):
         self._set_objects()
         self._draw_objects()
         self._add_noise()
+
+        # to get undetected objects
+        if self['measure_background']:
+            self._subtract_backgrounds()
         self._make_obs()
 
     def get_obs(self):
@@ -498,6 +502,14 @@ class Sim(dict):
                 size=im.shape,
             )
             im += noise_image
+
+    def _subtract_backgrounds(self):
+        import sep
+        for im in self.imlist:
+            bkg = sep.Background(im)
+            bkg_image = bkg.back()
+            print("    bkg median:",np.median(bkg_image))
+            im -= bkg_image
 
     def _make_obs(self):
 
