@@ -255,6 +255,17 @@ class MetacalFitter(MOFFitter):
 
         # this gets all objects, all bands in a list of MultiBandObsList
         corrected_mbobs_list = mof_fitter.make_corrected_obs()
+        '''
+        for i,mbobs in enumerate(corrected_mbobs_list):
+            import images
+            bim=mbobs[0][0].image
+            gim=mbobs[1][0].image
+            rim=mbobs[2][0].image
+            mval=max(bim.max(), gim.max(), rim.max())
+            rgb=images.get_color_image(rim/mval, gim/mval, bim/mval, nonlinear=0.1)
+            #images.view(mbobs[0][0].image,title='%d' % i)
+            images.view(rgb/rgb.max(),title='%d' % i)
+        '''
         return self._do_metacal(corrected_mbobs_list, data)
 
     def _do_metacal(self, mbobs_list, data):
