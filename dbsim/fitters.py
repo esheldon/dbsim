@@ -258,13 +258,23 @@ class MetacalFitter(MOFFitter):
         '''
         for i,mbobs in enumerate(corrected_mbobs_list):
             import images
-            bim=mbobs[0][0].image
-            gim=mbobs[1][0].image
-            rim=mbobs[2][0].image
+            bim0=mbobs_list[i][0][0].image.transpose()
+            gim0=mbobs_list[i][1][0].image.transpose()
+            rim0=mbobs_list[i][2][0].image.transpose()
+            bim=mbobs[0][0].image.transpose()
+            gim=mbobs[1][0].image.transpose()
+            rim=mbobs[2][0].image.transpose()
             mval=max(bim.max(), gim.max(), rim.max())
+            rgb0=images.get_color_image(rim0/mval, gim0/mval, bim0/mval, nonlinear=0.1)
             rgb=images.get_color_image(rim/mval, gim/mval, bim/mval, nonlinear=0.1)
             #images.view(mbobs[0][0].image,title='%d' % i)
-            images.view(rgb/rgb.max(),title='%d' % i)
+            imlist=[
+                rgb0/rgb0.max(), rgb/rgb.max(),
+                mbobs_list[i][0][0].weight, mbobs[0][0].weight,
+            ]
+            titles=['orig','corrected','weight orig','weight corr']
+            images.view_mosaic(imlist, titles=titles)
+        input('hit a key ')
         '''
         return self._do_metacal(corrected_mbobs_list, data)
 
