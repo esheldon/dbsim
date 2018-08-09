@@ -83,12 +83,13 @@ class Sim(dict):
             for index in indices:
                 mbobs=mm.get_mbobs(index, weight_type=weight_type)
                 mbobs_list.append( mbobs )
+            '''
             if len(mbobs_list) > 1:
                 import images
                 showim=[mbobs[0][0].image for mbobs in mbobs_list]
 
                 images.view_mosaic(showim)
-
+            '''
             self._set_psfs(mbobs_list)
             fof_mbobs_lists.append( mbobs_list )
 
