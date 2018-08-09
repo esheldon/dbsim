@@ -157,3 +157,10 @@ class Flat2D(ngmix.priors.PriorBase):
             high = self.xrng[1],
         )
         return output
+
+class Constant(object):
+    def __init__(self, value):
+        self.value=value
+
+    def sample(self):
+        return self.value

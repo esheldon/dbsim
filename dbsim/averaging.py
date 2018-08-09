@@ -137,18 +137,18 @@ class Summer(dict):
 
         if means.size == 1:
             if self.do_selection:
-                print("without correction")
+                print("without selection correction")
                 junk=get_m_c_oneshear(self.means_nocorr,nsig=args.nsigma)
-                print("\nwith correction")
+                print("\nwith selection correction")
 
             self.fits=get_m_c_oneshear(self.means,nsig=args.nsigma)
 
         else:
             if self.do_selection:
-                print("without correction")
+                print("without selection correction")
                 junk=fit_m_c(self.means_nocorr)
                 junk=fit_m_c(self.means_nocorr,onem=True)
-                print("\nwith correction")
+                print("\nwith selection correction")
 
             self.fits=fit_m_c(self.means,nsig=args.nsigma)
             self.fitsone=fit_m_c(self.means,onem=True,nsig=args.nsigma)

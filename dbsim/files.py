@@ -274,6 +274,15 @@ def read_output(run, filenum, get_meta=False):
     else:
         return model_fits
 
+def read_collated(run, **kw):
+    """
+    Read an output file
+    """
+    import fitsio
+
+    fname=get_collated_url(run)
+    return fitsio.read(fname, **kw)
+
 def read_yaml(fname):
     """
     read a yaml file

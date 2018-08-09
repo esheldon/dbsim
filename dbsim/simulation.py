@@ -83,6 +83,11 @@ class Sim(dict):
             for index in indices:
                 mbobs=mm.get_mbobs(index, weight_type=weight_type)
                 mbobs_list.append( mbobs )
+            if len(mbobs_list) > 1:
+                import images
+                showim=[mbobs[0][0].image for mbobs in mbobs_list]
+
+                images.view_mosaic(showim)
 
             self._set_psfs(mbobs_list)
             fof_mbobs_lists.append( mbobs_list )
@@ -188,10 +193,7 @@ class Sim(dict):
 
     def _make_flux_pdf(self):
         c=self['pdfs']['flux']
-        if c['type']=='track_hlr':
-            return 'track_hlr'
-        else:
-            return self._get_generic_pdf(c)
+        return self._get_generic_pdf(c)
 
     def _make_primary_pdfs(self):
         if 'hlr_flux' in self['pdfs']:
@@ -266,26 +268,29 @@ class Sim(dict):
     def _get_generic_pdf(self, c):
         rng=self.rng
 
-        if c['type']=='lognormal':
-            pdf = ngmix.priors.LogNormal(
-                c['mean'],
-                c['sigma'],
-                rng=rng,
-            )
-        elif c['type']=='flat':
-            pdf = ngmix.priors.FlatPrior(
-                c['range'][0],
-                c['range'][1],
-                rng=rng,
-            )
-        else:
-            raise ValueError("bad pdf: '%s'" % c['type'])
+        if isinstance(c,dict):
+            if c['type']=='lognormal':
+                pdf = ngmix.priors.LogNormal(
+                    c['mean'],
+                    c['sigma'],
+                    rng=rng,
+                )
+            elif c['type']=='flat':
+                pdf = ngmix.priors.FlatPrior(
+                    c['range'][0],
+                    c['range'][1],
+                    rng=rng,
+                )
+            else:
+                raise ValueError("bad pdf: '%s'" % c['type'])
 
-        limits=c.get('limits',None)
-        if limits is None:
-            return pdf
+            limits=c.get('limits',None)
+            if limits is None:
+                return pdf
+            else:
+                return ngmix.priors.LimitPDF(pdf, [0.0, 30.0])
         else:
-            return ngmix.priors.LimitPDF(pdf, [0.0, 30.0])
+            return pdfs.Constant(c)
 
     def _set_bands(self):
         nband=self.get('nband',None)
