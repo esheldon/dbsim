@@ -9,6 +9,7 @@ and doesn't degrade the chi squared
 {'ftol':tol, 'xtol':tol}
 
 """
+import logging
 import copy
 import numpy as np
 import ngmix
@@ -17,6 +18,8 @@ import galsim
 import mof
 from . import visualize
 from . import pdfs
+
+logger = logging.getLogger(__name__)
 
 class Sim(dict):
     def __init__(self, config, rng):
@@ -45,6 +48,7 @@ class Sim(dict):
         # to get undetected objects
         if self['measure_background']:
             self._subtract_backgrounds()
+
         self._make_obs()
 
     def get_obs(self):

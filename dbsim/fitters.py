@@ -278,12 +278,19 @@ class MetacalFitter(MOFFitter):
         '''
         return self._do_metacal(corrected_mbobs_list, data)
 
-    def _do_metacal(self, mbobs_list, data):
+    def _do_metacal(self, mbobs_list_in, data):
         """
         run metacal on all objects
 
         if some fail they will not be placed into the final output
         """
+
+        mbobs_list = self._remove_bad_obs(mbobs_list_in)
+        if len(mbobs_list) == 0:
+            logger.info("no good observations for metacal")
+        #    stop
+            return None
+        #mbobs_list = mbobs_list_in
 
         nband=len(mbobs_list[0])
 
@@ -336,6 +343,33 @@ class MetacalFitter(MOFFitter):
             metacal_pars=conf['metacal_pars'],
         )
         return boot
+
+    def _remove_bad_obs(self, mbobs_list_in):
+        mbobs_list=[]
+        for mbobs in mbobs_list_in:
+            if self._check_flags(mbobs):
+                mbobs_list.append(mbobs)
+
+        return mbobs_list
+
+    def _check_flags(self, mbobs):
+        """
+        only one epoch, so anything that hits an edge
+        """
+        flags=self['metacal'].get('bmask_flags',None)
+
+        isok=True
+        if flags is not None:
+            for obslist in mbobs:
+                for obs in obslist:
+                    w=np.where( (obs.bmask & flags) != 0 )
+                    if w[0].size > 0:
+                        logger.info("   EDGE HIT")
+                        isok = False
+                        break
+
+        return isok
+
 
     def _print_result(self, data):
         mess="        mcal s2n: %g Trat: %g"
