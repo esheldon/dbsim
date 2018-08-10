@@ -31,7 +31,8 @@ class Sim(dict):
 
         self._make_primary_pdfs()
 
-        self._make_bulge_pdfs()
+        if 'bulge' in self['pdfs']:
+            self._make_bulge_pdfs()
 
         if 'knots' in self['pdfs']:
             self._make_knots_pdfs()
@@ -304,13 +305,14 @@ class Sim(dict):
         nband=self.get('nband',None)
 
         cdisk=self['pdfs']['disk']
-        cbulge=self['pdfs']['bulge']
+        cbulge=self['pdfs'].get('bulge',None)
         cknots=self['pdfs'].get('knots',None)
 
         if nband is None:
             self['nband']=1
             cdisk['color']=[1.0]
-            cbulge['color']=[1.0]
+            if cbulge is not None:
+                cbulge['color']=[1.0]
             if cknots is not None:
                 cknots['color']=[1.0]
 
@@ -408,13 +410,30 @@ class Sim(dict):
 
         disk_g1,disk_g2 = self.g_pdf.sample2d()
 
-        hlr_fac, fracdev, gfac, bulge_offset = self._get_bulge_stats()
 
-        bulge_hlr = disk_hlr*hlr_fac
-        bulge_g1,bulge_g2 = gfac*disk_g1, gfac*disk_g2
+        all_obj={}
 
-        disk_flux = (1-fracdev)*flux
-        bulge_flux = fracdev*flux
+        if 'bulge' in self['pdfs']:
+            hlr_fac, fracdev, gfac, bulge_offset = self._get_bulge_stats()
+
+            bulge_hlr = disk_hlr*hlr_fac
+            bulge_g1,bulge_g2 = gfac*disk_g1, gfac*disk_g2
+
+            disk_flux = (1-fracdev)*flux
+            bulge_flux = fracdev*flux
+
+            bulge=galsim.DeVaucouleurs(
+                half_light_radius=bulge_hlr,
+                flux=bulge_flux,
+            ).shear(
+                g1=bulge_g1, g2=bulge_g2,
+            ).shift(
+                dx=bulge_offset[1], dy=bulge_offset[0],
+            )
+            all_obj['bulge'] = bulge
+
+        else:
+            disk_flux = flux
 
         disk = galsim.Exponential(
             half_light_radius=disk_hlr,
@@ -422,21 +441,8 @@ class Sim(dict):
         ).shear(
             g1=disk_g1, g2=disk_g2,
         )
+        all_obj['disk'] = disk
 
-        bulge=galsim.DeVaucouleurs(
-            half_light_radius=bulge_hlr,
-            flux=bulge_flux,
-        ).shear(
-            g1=bulge_g1, g2=bulge_g2,
-        ).shift(
-            dx=bulge_offset[1], dy=bulge_offset[0],
-        )
-
-        all_obj={
-            'disk':disk,
-            'bulge':bulge,
-        }
- 
         if 'knots' in self['pdfs']:
             nknots, knots_flux = self._get_knots_stats(disk_flux)
 
@@ -470,7 +476,7 @@ class Sim(dict):
         self.imlist=[]
 
         cdisk=self['pdfs']['disk']
-        cbulge=self['pdfs']['bulge']
+        cbulge=self['pdfs'].get('bulge',None)
         cknots=self['pdfs'].get('knots',None)
 
         for band in range(self['nband']):
@@ -478,14 +484,21 @@ class Sim(dict):
             for obj_parts in self.objlist:
 
                 disk=obj_parts['disk']*cdisk['color'][band]
-                bulge=obj_parts['bulge']*cbulge['color'][band]
-                tparts=[disk, bulge]
+                tparts=[disk]
+
+                if cbulge is not None:
+                    bulge=obj_parts['bulge']*cbulge['color'][band]
+                    tparts.append(bulge)
 
                 if cknots is not None:
                     knots = obj_parts['knots']*cknots['color'][band]
                     tparts.append( knots )
 
-                obj = galsim.Sum(tparts)
+                if len(tparts)==1:
+                    obj = tparts[0]
+                else:
+                    obj = galsim.Sum(tparts)
+
                 obj = obj.shift(
                     dx=obj_parts['cen'][0],
                     dy=obj_parts['cen'][1],
