@@ -112,10 +112,6 @@ class FitterBase(dict):
 
         return prior
 
-
-
-     
-
 class MOFFitter(FitterBase):
     def __init__(self, *args, **kw):
 
@@ -140,7 +136,7 @@ class MOFFitter(FitterBase):
         """
 
         try:
-            self._fit_all_psfs(mbobs_list, self['mof']['psf'])
+            _fit_all_psfs(mbobs_list, self['mof']['psf'])
 
             mofc = self['mof']
             fitter = mof.MOFStamps(
@@ -172,10 +168,6 @@ class MOFFitter(FitterBase):
         else:
             return data
 
-
-    def _fit_all_psfs(self, mbobs_list, psf_conf):
-        fitter=AllPSFFitter(mbobs_list, psf_conf)
-        fitter.go()
 
     def _get_dtype(self, npars, nband):
         n=Namer(front=self['mof']['model'])
@@ -228,7 +220,7 @@ class MOFFitter(FitterBase):
 
         return output
             
-class MetacalFitter(MOFFitter):
+class MetacalFitter(FitterBase):
     """
     run metacal on all objects found in the image, using
     the deblended or "corrected" images produced by the
@@ -236,26 +228,39 @@ class MetacalFitter(MOFFitter):
     """
     def __init__(self, *args, **kw):
 
+        self.mof_fitter=kw.pop('mof_fitter',None)
+
         super(MetacalFitter,self).__init__(*args, **kw)
 
         self.metacal_prior = self._get_prior(self['metacal'])
 
-    def go(self, mbobs_list):
+
+    def go(self, mbobs_list_input):
         """
         do all fits and return fitter, data
 
         metacal data are appended to the mof data for each object
         """
-        mof_fitter, data = super(MetacalFitter,self).go(
-            mbobs_list,
-            get_fitter=True,
-        )
-        if data is None:
-            return None
 
-        # this gets all objects, all bands in a list of MultiBandObsList
-        corrected_mbobs_list = mof_fitter.make_corrected_obs()
-        '''
+        if self.mof_fitter is not None:
+            # for mof fitting, we expect a list of mbobs_lists
+            fitter, mof_data = self.mof_fitter.go(
+                mbobs_list_input,
+                get_fitter=True,
+            )
+
+            # this gets all objects, all bands in a list of MultiBandObsList
+            mbobs_list = fitter.make_corrected_obs()
+
+            if False:
+                self._show_corrected_obs(mbobs_list_input, mbobs_list)
+        else:
+            mbobs_list = mbobs_list_input
+            mof_data=None
+
+        return self._do_all_metacal(mbobs_list, data=mof_data)
+
+    def _show_corrected_obs(self, mbobs_list, corrected_mbobs_list):
         for i,mbobs in enumerate(corrected_mbobs_list):
             import images
             bim0=mbobs_list[i][0][0].image.transpose()
@@ -274,42 +279,44 @@ class MetacalFitter(MOFFitter):
             ]
             titles=['orig','corrected','weight orig','weight corr']
             images.view_mosaic(imlist, titles=titles)
-        input('hit a key ')
-        '''
-        return self._do_metacal(corrected_mbobs_list, data)
 
-    def _do_metacal(self, mbobs_list_in, data):
+        if 'q'==input('hit a key (q to quit): '):
+            stop
+
+
+    def _do_all_metacal(self, mbobs_list, data=None):
         """
         run metacal on all objects
 
         if some fail they will not be placed into the final output
         """
 
-        mbobs_list = self._remove_bad_obs(mbobs_list_in)
-        if len(mbobs_list) == 0:
-            logger.info("no good observations for metacal")
-        #    stop
-            return None
-        #mbobs_list = mbobs_list_in
-
         nband=len(mbobs_list[0])
 
         datalist=[]
         for i,mbobs in enumerate(mbobs_list):
-            try:
-                boot=self._do_one_metacal(mbobs, data[i])
-                res=boot.get_metacal_result()
-            except (BootPSFFailure, BootGalFailure):
-                res={'mcal_flags':1}
+            if self._check_flags(mbobs):
+                try:
+                    boot=self._do_one_metacal(mbobs)
+                    res=boot.get_metacal_result()
+                except (BootPSFFailure, BootGalFailure):
+                    res={'mcal_flags':1}
 
-            if res['mcal_flags'] != 0:
-                logger.debug("        metacal fit failed")
-            else:
-                # make sure we send an array
-                odata = data[i:i+1]
-                new_data = self._get_metacal_output(odata, res, nband)
-                self._print_result(new_data)
-                datalist.append(new_data)
+                if res['mcal_flags'] != 0:
+                    logger.debug("        metacal fit failed")
+                else:
+                    # make sure we send an array
+                    fit_data = self._get_metacal_output(res, nband)
+                    if data is not None:
+                        odata = data[i:i+1]
+                        fit_data = eu.numpy_util.add_fields(
+                            fit_data,
+                            odata.dtype.descr,
+                        )
+                        eu.numpy_util.copy_fields(odata, fit_data)
+
+                    self._print_result(fit_data)
+                    datalist.append(fit_data)
 
         if len(datalist) == 0:
             return None
@@ -317,13 +324,18 @@ class MetacalFitter(MOFFitter):
         output = eu.numpy_util.combine_arrlist(datalist)
         return output
 
-    def _do_one_metacal(self, mbobs, data):
+
+    def _do_one_metacal(self, mbobs):
         conf=self['metacal']
 
         psf_pars=conf['psf']
         max_conf=conf['max_pars']
 
-        psf_Tguess=mbobs[0][0].psf.gmix.get_T()
+        tpsf_obs=mbobs[0][0].psf
+        if not tpsf_obs.has_gmix():
+            _fit_one_psf(tpsf_obs, psf_pars)
+
+        psf_Tguess=tpsf_obs.gmix.get_T()
 
         boot=self._get_bootstrapper(mbobs)
         boot.fit_metacal(
@@ -343,14 +355,6 @@ class MetacalFitter(MOFFitter):
             metacal_pars=conf['metacal_pars'],
         )
         return boot
-
-    def _remove_bad_obs(self, mbobs_list_in):
-        mbobs_list=[]
-        for mbobs in mbobs_list_in:
-            if self._check_flags(mbobs):
-                mbobs_list.append(mbobs)
-
-        return mbobs_list
 
     def _check_flags(self, mbobs):
         """
@@ -407,10 +411,11 @@ class MetacalFitter(MOFFitter):
 
         return dt
 
-    def _get_metacal_output(self, odata, allres, nband):
+    def _get_metacal_output(self, allres, nband):
         npars=len(allres['noshear']['pars'])
-        extra_dt = self._get_metacal_dtype(npars, nband)
-        data = eu.numpy_util.add_fields(odata, extra_dt)
+        dt = self._get_metacal_dtype(npars, nband)
+        data = np.zeros(1, dtype=dt)
+
         data0=data[0]
 
         for mtype in METACAL_TYPES:
@@ -447,6 +452,14 @@ class MetacalFitter(MOFFitter):
             verbose=False,
         )
 
+def _fit_all_psfs(mbobs_list, psf_conf):
+    """
+    fit all psfs in the input observations
+    """
+    fitter=AllPSFFitter(mbobs_list, psf_conf)
+    fitter.go()
+     
+
 
 class AllPSFFitter(object):
     def __init__(self, mbobs_list, psf_conf):
@@ -458,27 +471,25 @@ class AllPSFFitter(object):
             for obslist in mbobs:
                 for obs in obslist:
                     psf_obs = obs.get_psf()
-                    self._fit_one(psf_obs)
+                    _fit_one_psf(psf_obs, self.psf_conf)
 
-    def _fit_one(self, obs):
-        Tguess=4.0*obs.jacobian.get_scale()**2
+def _fit_one_psf(obs, pconf):
+    Tguess=4.0*obs.jacobian.get_scale()**2
 
-        pconf=self.psf_conf
+    runner=ngmix.bootstrap.PSFRunner(
+        obs,
+        pconf['model'],
+        Tguess,
+        pconf['lm_pars'],
+    )
+    runner.go(ntry=pconf['ntry'])
 
-        runner=ngmix.bootstrap.PSFRunner(
-            obs,
-            pconf['model'],
-            Tguess,
-            pconf['lm_pars'],
-        )
-        runner.go(ntry=pconf['ntry'])
+    psf_fitter = runner.fitter
+    res=psf_fitter.get_result()
+    obs.update_meta_data({'fitter':psf_fitter})
 
-        psf_fitter = runner.fitter
-        res=psf_fitter.get_result()
-        obs.update_meta_data({'fitter':psf_fitter})
-
-        if res['flags']==0:
-            gmix=psf_fitter.get_gmix()
-            obs.set_gmix(gmix)
-        else:
-            raise BootPSFFailure("failed to fit psfs: %s" % str(res))
+    if res['flags']==0:
+        gmix=psf_fitter.get_gmix()
+        obs.set_gmix(gmix)
+    else:
+        raise BootPSFFailure("failed to fit psfs: %s" % str(res))

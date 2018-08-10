@@ -5,7 +5,7 @@ import logging
 import fitsio
 import esutil as eu
 from . import simulation
-from . import fitters
+from .fitters import MOFFitter, MetacalFitter
 
 logger = logging.getLogger(__name__)
 
@@ -27,8 +27,7 @@ def go(sim_conf,
 
     sim=simulation.Sim(sim_conf, rng)
 
-    fclass=get_fitclass(fit_conf)
-    fitter=fclass(fit_conf, sim_conf['nband'], fitrng)
+    fitter=get_fitter(sim_conf, fit_conf, fitrng)
 
     nsim=0
     nfit=0
@@ -185,17 +184,29 @@ def make_meta(ntrials, nsim, nfit, nobj_detected, nkept, elapsed_time, tm_sim, t
     return meta
 
 
-def get_fitclass(conf):
+def get_fitter(sim_conf, fit_conf, fitrng):
     """
     get the appropriate fitting class
     """
-    if conf['fitter']=='mof':
-        fclass=fitters.MOFFitter
-    elif conf['fitter']=='mof-metacal':
-        fclass=fitters.MetacalFitter
+    if fit_conf['fitter']=='metacal':
+        if fit_conf['fofs']['find_fofs']:
+            mof_fitter = MOFFitter(fit_conf, sim_conf['nband'], fitrng)
+        else:
+            mof_fitter=None
+
+        fitter=MetacalFitter(
+            fit_conf,
+            sim_conf['nband'],
+            fitrng,
+            mof_fitter=mof_fitter,
+        )
+    elif fit_conf['fitter']=='mof':
+        fitter = MOFFitter(fit_conf, sim_conf['nband'], fitrng)
+
     else:
-        raise ValueError("bad fitter: '%s'" % conf['fitter'])
-    return fclass
+        raise ValueError("bad fitter: '%s'" % fit_conf['fitter'])
+
+    return fitter
 
 
 def profile_sim(seed,sim_conf,fit_conf,ntrials,output_file):
