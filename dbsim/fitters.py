@@ -120,7 +120,7 @@ class MOFFitter(FitterBase):
         self.mof_prior = self._get_prior(self['mof'])
 
 
-    def go(self, mbobs_list, get_fitter=False):
+    def go(self, mbobs_list, ntry=2, get_fitter=False):
         """
         run the multi object fitter
 
@@ -144,15 +144,19 @@ class MOFFitter(FitterBase):
                 mofc['model'],
                 prior=self.mof_prior,
             )
-            guess=mof.moflib.get_stamp_guesses(
-                mbobs_list,
-                mofc['detband'],
-                mofc['model'],
-                self.rng,
-            )
-            fitter.go(guess)
+            for i in range(ntry):
+                guess=mof.moflib.get_stamp_guesses(
+                    mbobs_list,
+                    mofc['detband'],
+                    mofc['model'],
+                    self.rng,
+                )
+                fitter.go(guess)
 
-            res=fitter.get_result()
+                res=fitter.get_result()
+                if res['flags']==0:
+                    break
+
         except BootPSFFailure as err:
             print(str(err))
             res={'flags':1}
@@ -248,6 +252,8 @@ class MetacalFitter(FitterBase):
                 mbobs_list_input,
                 get_fitter=True,
             )
+            if mof_data is None:
+                return None
 
             # this gets all objects, all bands in a list of MultiBandObsList
             mbobs_list = fitter.make_corrected_obs()
