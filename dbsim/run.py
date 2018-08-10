@@ -46,8 +46,12 @@ def go(sim_conf,
         tm0=time.time()
         sim.make_obs()
         if fof_conf['find_fofs']:
-            mbobs_list = sim.get_fofs(fof_conf, weight_type=weight_type,
-                                      show=show)
+            if fof_conf.get('link_all',False):
+                mbobs_list = sim.get_mbobs_list(weight_type=weight_type)
+                mbobs_list = [mbobs_list]
+            else:
+                mbobs_list = sim.get_fofs(fof_conf, weight_type=weight_type,
+                                          show=show)
         else:
             mbobs_list = sim.get_mbobs_list(weight_type=weight_type)
 
