@@ -4,10 +4,8 @@ import ngmix
 
 class CosmosSampler(object):
     def __init__(self,
-                 min_r50=0.05,
-                 max_r50=2.0,
-                 min_flux=0.5,
-                 max_flux=100,
+                 r50_range=[0.05, 2.0],
+                 flux_range=[0.5, 100.0],
                  kde_factor=0.01,
                  flux_mult=None,
                  rng=None):
@@ -21,8 +19,8 @@ class CosmosSampler(object):
             rng=np.random.RandomState()
 
         self.rng=rng
-        self.r50_range = (min_r50, max_r50)
-        self.flux_range = (min_flux, max_flux)
+        self.r50_range = r50_range
+        self.flux_range = flux_range
         self.flux_mult=flux_mult
 
         self.r50_sanity_range=0.05,2.0

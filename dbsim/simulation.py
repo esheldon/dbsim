@@ -212,9 +212,12 @@ class Sim(dict):
         c=self['pdfs']['hlr_flux']
         assert c['type']=='cosmos'
 
-        flux_mult=c.get('flux_mult',None)
-
-        return CosmosSampler(rng=self.rng, flux_mult=flux_mult)
+        return CosmosSampler(
+            rng=self.rng,
+            flux_range=c['flux_range'],
+            r50_range=c['r50_range'],
+            flux_mult=c['flux_mult'],
+        )
 
     def _make_bulge_pdfs(self):
         self.bulge_hlr_frac_pdf=self._make_bulge_hlr_frac_pdf()
