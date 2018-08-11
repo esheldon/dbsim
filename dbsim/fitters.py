@@ -162,6 +162,7 @@ class MOFFitter(FitterBase):
             res={'flags':1}
 
         if res['flags'] != 0:
+            fitter=None
             data=None
         else:
             reslist=fitter.get_result_list()
