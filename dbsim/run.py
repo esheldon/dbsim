@@ -34,6 +34,7 @@ def go(sim_conf,
     nobj_detected=0
     tm0_main = time.time()
     tm_sim=0.0
+    tm_extract=0.0
     tm_fit=0.0
 
     weight_type=fit_conf['weight_type']
@@ -44,8 +45,13 @@ def go(sim_conf,
         logger.debug("trial: %d/%d" % (i+1,ntrials))
 
         tm0=time.time()
+        logger.debug('simulating images')
         sim.make_obs()
+        tm_sim += time.time()-tm0
+
+        tm0=time.time()
         if fof_conf['find_fofs']:
+            logger.debug('extracting and finding fofs')
             if fof_conf.get('link_all',False):
                 mbobs_list = sim.get_mbobs_list(weight_type=weight_type)
                 mbobs_list = [mbobs_list]
@@ -53,9 +59,10 @@ def go(sim_conf,
                 mbobs_list = sim.get_fofs(fof_conf, weight_type=weight_type,
                                           show=show)
         else:
+            logger.debug('extracting')
             mbobs_list = sim.get_mbobs_list(weight_type=weight_type)
+        tm_extract += time.time()-tm0
 
-        tm_sim += time.time()-tm0
         nsim += 1
 
         if show:
@@ -86,13 +93,14 @@ def go(sim_conf,
 
     meta=make_meta(
         ntrials, nsim, nfit, nobj_detected,
-        nkept, elapsed_time, tm_sim, tm_fit,
+        nkept, elapsed_time, tm_sim, tm_extract, tm_fit,
     )
 
     logger.info("kept: %d/%d %.2f" % (nkept,ntrials,float(nkept)/ntrials))
     logger.info("time minutes: %g" % meta['tm_minutes'][0])
     logger.info("time per trial: %g" % meta['tm_per_trial'][0])
     logger.info("time per sim: %g" % meta['tm_per_sim'][0])
+    logger.info("time per extract: %g" % meta['tm_per_extract'][0])
     if nfit > 0:
         logger.info("time per fit: %g" % meta['tm_per_fit'][0])
         logger.info("time fit per detected object: %g" % meta['tm_per_obj_detected'][0])
@@ -143,7 +151,15 @@ def run_one_fof(fitter, mbobs_list):
 
     return datalist, nobj, tm
 
-def make_meta(ntrials, nsim, nfit, nobj_detected, nkept, elapsed_time, tm_sim, tm_fit):
+def make_meta(ntrials,
+              nsim,
+              nfit,
+              nobj_detected,
+              nkept,
+              elapsed_time,
+              tm_sim,
+              tm_extract,
+              tm_fit):
     dt=[
         ('ntrials','i8'),
         ('nsim','i8'),
@@ -154,8 +170,10 @@ def make_meta(ntrials, nsim, nfit, nobj_detected, nkept, elapsed_time, tm_sim, t
         ('tm_minutes','f4'),
         ('tm_per_trial','f4'),
         ('tm_sim','f4'),
+        ('tm_extract','f4'),
         ('tm_fit','f4'),
         ('tm_per_sim','f4'),
+        ('tm_per_extract','f4'),
         ('tm_per_fit','f4'),
         ('tm_per_obj_detected','f4'),
     ]
@@ -166,10 +184,12 @@ def make_meta(ntrials, nsim, nfit, nobj_detected, nkept, elapsed_time, tm_sim, t
     meta['nobj_detected'] = nobj_detected
     meta['nkept'] = nkept
     meta['tm_sim'] = tm_sim
+    meta['tm_extract'] = tm_extract
     meta['tm_fit'] = tm_fit
     meta['tm'] = elapsed_time
     meta['tm_minutes'] = elapsed_time/60
     meta['tm_per_sim'] = tm_sim/nsim
+    meta['tm_per_extract'] = tm_extract/nsim
     meta['tm_per_trial'] = elapsed_time/ntrials
 
     if nfit > 0:
