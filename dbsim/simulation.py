@@ -71,6 +71,9 @@ class Sim(dict):
 
         nf = mof.fofs.NbrsFoF(nbr_data)
         fofs = nf.get_fofs()
+        if fofs.size==0:
+            return []
+
         if show:
             self._plot_fofs(mm, fofs)
 
