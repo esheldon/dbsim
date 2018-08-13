@@ -56,12 +56,18 @@ class Sim(dict):
     def get_obs(self):
         return self.obs
 
-    def get_fofs(self, fof_conf, weight_type='weight', show=False):
+    def get_fofs(self, fof_conf, obs=None, weight_type='weight', show=False):
         """
         get lists of MultiBandObsList s for each
         Friends of Friends group
         """
-        mm=self.get_multiband_meds()
+        mm=self.get_multiband_meds(obs=obs)
+
+        if obs is not None:
+            logger.info("assuming psfs are all the same")
+            psf_obs=obs[0][0].psf
+        else:
+            psf_obs=None
 
         mn=mof.fofs.MEDSNbrs(
             mm.mlist,
@@ -92,14 +98,8 @@ class Sim(dict):
             for index in indices:
                 mbobs=mm.get_mbobs(index, weight_type=weight_type)
                 mbobs_list.append( mbobs )
-            '''
-            if len(mbobs_list) > 1:
-                import images
-                showim=[mbobs[0][0].image for mbobs in mbobs_list]
 
-                images.view_mosaic(showim)
-            '''
-            self._set_psfs(mbobs_list)
+            self._set_psfs(mbobs_list, psf_obs=psf_obs)
             fof_mbobs_lists.append( mbobs_list )
 
         return fof_mbobs_lists
@@ -117,41 +117,54 @@ class Sim(dict):
         )
 
 
-    def get_mbobs_list(self, weight_type='weight'):
+    def get_mbobs_list(self, obs=None, weight_type='weight'):
         """
         get a list of MultiBandObsList for every object or
         the specified indices
 
         this runs sep on the image
         """
-        mm=self.get_multiband_meds()
+        mm=self.get_multiband_meds(obs=obs)
         mbobs_list = mm.get_mbobs_list(weight_type=weight_type)
-        self._set_psfs(mbobs_list)
+
+        if obs is not None:
+            logger.info("assuming psfs are all the same")
+            psf_obs=obs[0][0].psf
+        else:
+            psf_obs=None
+
+        self._set_psfs(mbobs_list, psf_obs=psf_obs)
 
         return mbobs_list
 
-    def _set_psfs(self, mbobs_list):
+    def _set_psfs(self, mbobs_list, psf_obs=None):
         for mbobs in mbobs_list:
             for olist in mbobs:
                 for obs in olist:
-                    psf_obs=self.get_psf_obs()
-                    obs.set_psf(psf_obs)
+                    if psf_obs is not None:
+                        tpsf_obs=psf_obs.copy()
+                    else:
+                        tpsf_obs=self.get_psf_obs()
+                    obs.set_psf(tpsf_obs)
 
 
-    def get_multiband_meds(self):
+    def get_multiband_meds(self, obs=None):
         """
         get a multiband MEDS instance
         """
-        medser=self.get_medsifier()
+        medser=self.get_medsifier(obs=obs)
         mm=medser.get_multiband_meds()
         return mm
 
-    def get_medsifier(self):
+    def get_medsifier(self, obs=None):
         """
         medsify the data
         """
+        if obs is None:
+            obs = self.obs
+
         dlist=[]
-        for olist in self.obs:
+        for olist in obs:
             # assuming only one image per band
             tobs=olist[0]
             wcs=tobs.jacobian.get_galsim_wcs()
@@ -554,6 +567,15 @@ class Sim(dict):
             bkg_image = bkg.back()
             logger.debug("    bkg median: %g" % np.median(bkg_image))
             im -= bkg_image
+
+    def get_all_metacal(self, **metacal_pars):
+        """
+        get metal versions of the big image
+        """
+        return ngmix.metacal.get_all_metacal(
+            self.obs,
+            **metacal_pars
+        )
 
     def _make_obs(self):
 
