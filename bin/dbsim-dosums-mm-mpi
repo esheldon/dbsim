@@ -34,7 +34,7 @@ def add_all_sums(sums_list):
 
 def get_sums_dt():
     dt=[
-        ('wsum','f8'),
+        ('wsum','f8',2),
         ('g','f8',2),
         ('gsq','f8',2),
         ('wsq','f8',2),
@@ -66,7 +66,7 @@ def do_sums(data, select=None, do_weights=False):
 
     if do_weights:
         wts = np.ones( (w.size,2), dtype='f8')
-        res['wsum'] = wts.sum()
+        res['wsum'] = wts.sum(axis=0)
         res['wsqsum'] = (wts**2).sum(axis=0)
 
     return res
