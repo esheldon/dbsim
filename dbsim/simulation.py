@@ -56,12 +56,36 @@ class Sim(dict):
     def get_obs(self):
         return self.obs
 
-    def get_fofs(self, fof_conf, obs=None, weight_type='weight', show=False):
+    def get_fofs(self,
+                 fof_conf,
+                 cat=None,
+                 seg=None,
+                 obs=None,
+                 weight_type='weight',
+                 show=False):
         """
-        get lists of MultiBandObsList s for each
+        get lists of MultiBandObsList for each
         Friends of Friends group
+
+
+        parameters
+        ----------
+        fof_conf: dict
+            configuration for FOFs
+        obs: observations
+            If sent, these are used rather than
+            the originals
+        cat: catalog
+            If sent, is used for making the MEDS files
+        seg: seg map
+            Should be sent with cat
+
+        weight_type: string
+            'weight' or 'uberseg'
+        show: bool
+            If True show the image used for making meds
         """
-        mm=self.get_multiband_meds(obs=obs)
+        mm=self.get_multiband_meds(obs=obs, cat=cat, seg=seg)
 
         if obs is not None:
             logger.info("assuming psfs are all the same")
@@ -117,14 +141,14 @@ class Sim(dict):
         )
 
 
-    def get_mbobs_list(self, obs=None, weight_type='weight'):
+    def get_mbobs_list(self, cat=None, seg=None, obs=None, weight_type='weight'):
         """
         get a list of MultiBandObsList for every object or
         the specified indices
 
         this runs sep on the image
         """
-        mm=self.get_multiband_meds(obs=obs)
+        mm=self.get_multiband_meds(cat=cat, seg=seg, obs=obs)
         mbobs_list = mm.get_mbobs_list(weight_type=weight_type)
 
         if obs is not None:
@@ -148,15 +172,15 @@ class Sim(dict):
                     obs.set_psf(tpsf_obs)
 
 
-    def get_multiband_meds(self, obs=None):
+    def get_multiband_meds(self, cat=None, seg=None, obs=None):
         """
         get a multiband MEDS instance
         """
-        medser=self.get_medsifier(obs=obs)
+        medser=self.get_medsifier(cat=cat, seg=seg, obs=obs)
         mm=medser.get_multiband_meds()
         return mm
 
-    def get_medsifier(self, obs=None):
+    def get_medsifier(self, cat=None, seg=None, obs=None):
         """
         medsify the data
         """
@@ -181,6 +205,8 @@ class Sim(dict):
         meds_config=self.get('meds',None)
         return mof.stamps.MEDSifier(
             dlist,
+            cat=cat,
+            seg=seg,
             sx_config=sx_config,
             meds_config=meds_config,
         )

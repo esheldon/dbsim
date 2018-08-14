@@ -36,7 +36,8 @@ def go(sim_conf,
     tm_sim=0.0
     tm_fit=0.0
 
-    fit_conf['metameta']=fit_conf.get('metameta',False)
+    fit_conf['meta']=fit_conf.get('meta',None)
+    metad=fit_conf['meta']
 
     datalist=[]
     for i in range(ntrials):
@@ -55,8 +56,8 @@ def go(sim_conf,
             if 'q'==input('hit a key (q to quit): '):
                 return
 
-        if fit_conf['metameta']:
-            resdict, nobj, tm = do_metameta(sim, fit_conf, fitter)
+        if metad is not None and metad['dometa']:
+            resdict, nobj, tm = do_meta(sim, fit_conf, fitter)
             reslist=[resdict]
         else:
             reslist, nobj, tm = do_fits(sim, fit_conf, fitter, show=show)
@@ -88,20 +89,34 @@ def go(sim_conf,
     if nkept == 0:
         logger.info("no results to write")
     else:
-        if fit_conf['metameta']:
-            write_metameta(output_file, datalist, meta, fit_conf)
+        if metad is not None and metad['dometa']:
+            write_meta(output_file, datalist, meta, fit_conf)
         else:
             data = eu.numpy_util.combine_arrlist(datalist)
             write_output(output_file, data, meta)
 
 
-def do_metameta(sim, fit_conf, fitter, show=False):
+def do_meta(sim, fit_conf, fitter, show=False):
     """
     currently we only do the full version, making
     metacal images for the full image set and
     sending all to MOF 
     """
+    mtype=fit_conf['meta']['type']
+    if mtype=='meta-detect':
+        tup = do_meta_detect(sim, fit_conf, fitter, show=False)
+    elif mtype=='meta-mof':
+        tup = do_meta_mof(sim, fit_conf, fitter, show=False)
+    else:
+        raise ValueError("bad meta type: '%s'" % mtype)
+    
+    return tup
 
+def do_meta_detect(sim, fit_conf, fitter, show=False):
+    """
+    metacal the entire process, including detection.
+    This means you lose a lot of detections
+    """
     metacal_pars=fit_conf['metacal']['metacal_pars']
     if metacal_pars.get('symmetrize_psf',False):
         fitters._fit_all_psfs([sim.obs], fit_conf['mof']['psf'])
@@ -127,24 +142,87 @@ def do_metameta(sim, fit_conf, fitter, show=False):
         reslists[key] = reslist
 
     return reslists, nobj, tm_fit
+
+def do_meta_mof(sim, fit_conf, fitter, show=False):
+    """
+    metacal the MOF process but not detection
+
+    build the catalog based on original images, but then
+    run MOF on sheared versions
+    """
+
+    # create metacal versions of image
+    metacal_pars=fit_conf['metacal']['metacal_pars']
+    if metacal_pars.get('symmetrize_psf',False):
+        fitters._fit_all_psfs([sim.obs], fit_conf['mof']['psf'])
+
+    odict=ngmix.metacal.get_all_metacal(
+        sim.obs,
+        **metacal_pars
+    )
+
+    # create the catalog based on original images
+    # this will just run sx and create seg and
+    # cat
+    medsifier=sim.get_medsifier()
+
+    nobj=0
+    tm_fit=0.0
+    reslists={}
+    for key in odict:
+        reslist, tnobj, ttm = do_fits(
+            sim,
+            fit_conf,
+            fitter,
+            cat=medsifier.cat,
+            seg=medsifier.seg,
+            obs=odict[key],
+            show=show,
+        )
+        nobj = max(nobj, tnobj)
+        tm_fit += ttm
+        reslists[key] = reslist
+
+    return reslists, nobj, tm_fit
     
-def do_fits(sim, fit_conf, fitter, obs=None, show=False):
+def do_fits(sim,
+            fit_conf,
+            fitter,
+            cat=None,
+            seg=None,
+            obs=None,
+            show=False):
+
     fof_conf=fit_conf['fofs']
     weight_type=fit_conf['weight_type']
 
     if fof_conf['find_fofs']:
         logger.debug('extracting and finding fofs')
         if fof_conf.get('link_all',False):
-            mbobs_list = sim.get_mbobs_list(obs=obs,weight_type=weight_type)
+            mbobs_list = sim.get_mbobs_list(
+                cat=cat,
+                seg=seg,
+                obs=obs,
+                weight_type=weight_type,
+            )
             mbobs_list = [mbobs_list]
         else:
-            mbobs_list = sim.get_fofs(fof_conf, obs=obs,
-                                      weight_type=weight_type,
-                                      show=show)
+            mbobs_list = sim.get_fofs(
+                fof_conf,
+                cat=cat,
+                seg=seg,
+                obs=obs,
+                weight_type=weight_type,
+                show=show,
+            )
     else:
         logger.debug('extracting')
-        mbobs_list = sim.get_mbobs_list(obs=obs,
-                                        weight_type=weight_type)
+        mbobs_list = sim.get_mbobs_list(
+            cat=cat,
+            seg=seg,
+            obs=obs,
+            weight_type=weight_type,
+        )
 
     if len(mbobs_list)==0:
         reslist=None
@@ -312,7 +390,7 @@ def write_output(output_file, data, meta):
         fits.write(data, extname='model_fits')
         fits.write(meta, extname='meta_data')
 
-def write_metameta(output_file, datalist, meta, fit_conf):
+def write_meta(output_file, datalist, meta, fit_conf):
 
     odir=os.path.dirname(output_file)
     if not os.path.exists(odir):
