@@ -45,27 +45,30 @@ def get_sums_dt(self):
     ]
     return dt
 
-def do_sums(args, data, do_weights=False):
+def do_sums(args, data, select=None, do_weights=False):
 
     n=dbsim.util.Namer(front='gauss')
 
-    w,=np.where(
-        (data[n('s2n')] > args.s2n_min)
-        &
-        (data[n('T_ratio')] > args.Tratio_min)
-    )
+    if select is not None:
+        s2n=data[n('s2n')]
+        Tratio=data[n('T_ratio')]
 
-    gsum = data[n('g')][w].sum(axis=0)
-    gsqsum = ( data[n('g')][w]**2 ).sum(axis=0)
+        logic=eval(self.select)
+        w,=where(logic)
+    else:
+        w=np.arange(data.size)
+
+    res={}
+    res['gsum'] = data[n('g')][w].sum(axis=0)
+    res['gsqsum'] = ( data[n('g')][w]**2 ).sum(axis=0)
+
 
     if do_weights:
         wts = np.ones( (w.size,2), dtype='f8')
-        wsum = wts.sum()
-        wsqsum = (wts**2).sum(axis=0)
+        res['wsum'] = wts.sum()
+        res['wsqsum'] = (wts**2).sum(axis=0)
 
-        return gsum, gsqsum, wsum, wsqsum
-    else:
-        return gsum, gsqsum
+    return res
 
 def do_all_sums(fname, select=None):
 
@@ -77,22 +80,22 @@ def do_all_sums(fname, select=None):
         for type in ['noshear','1p','1m','2p','2m']:
             data = fits[type][:]
             if type=='noshear':
-                gsum, gsqsum, wsum, wsqsum=do_sums(
-                    data,
-                    select=select,
-                    do_weights=True,
-                )
-                o1['wsum']=wsum
-                o1['wsq']=wsqsum
+                do_weights=True
             else:
-                gsum, gsqsum=do_sums(
-                    data,
-                    select=select,
-                    do_weights=False,
-                )
+                do_weights=False
 
-            o1[n('g')] = gsum
-            o1[n('gsq')] = gsqsum
+            res=do_sums(
+                data,
+                select=select,
+                do_weights=False,
+            )
+
+            if do_weights:
+                o1['wsum']=res['wsum']
+                o1['wsq']=res['wsqsum']
+
+            o1[n('g')] = res['gsum']
+            o1[n('gsq')] = res['gsqsum']
 
     return output
 
