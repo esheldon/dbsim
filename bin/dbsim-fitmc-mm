@@ -49,7 +49,8 @@ def average_shear(sums):
     st['R'][0] = (g1p[0] - g1m[0])/step
     st['R'][1] = (g2p[1] - g2m[1])/step
 
-    print("R:",st['R'])
+    print('num:',st['wsum'][0])
+    print('R:',st['R'])
 
     st['shear'] = g/st['R']
     st['shear_err'] = gerr/st['R']
