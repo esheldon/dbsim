@@ -1,0 +1,134 @@
+#!/usr/bin/env python
+"""
+mpirun -n 8 dbsim-dosums-mm-api
+"""
+
+import os
+from glob import glob
+import numpy as np
+import esutil as eu
+import dbsim
+import navy
+import argparse
+
+fclass=argparse.ArgumentDefaultsHelpFormatter
+parser=argparse.ArgumentParser(formatter_class=fclass)
+
+parser.add_argument('run', help='run to process')
+parser.add_argument('--select',help='selection identifier')
+
+
+parser.add_argument('--nsigma',default=3.0,type=float,
+                    help='number sigma error bars to print')
+
+
+def add_all_sums(sums_list):
+    sums = sums_list[0].copy()
+
+    for tsums in sums_list[1:]:
+        for n in sums.dtype.names:
+                sums[n] += tsums[n]
+
+    return sums
+
+def get_sums_dt(self):
+    dt=[
+        ('wsum','f8'),
+        ('g','f8',2),
+        ('gsq','f8',2),
+        ('wsq','f8',2),
+
+        ('g_1p','f8',2),
+        ('g_1m','f8',2),
+        ('g_2p','f8',2),
+        ('g_2m','f8',2),
+    ]
+    return dt
+
+def do_sums(args, data, do_weights=False):
+
+    n=dbsim.util.Namer(front='gauss')
+
+    w,=np.where(
+        (data[n('s2n')] > args.s2n_min)
+        &
+        (data[n('T_ratio')] > args.Tratio_min)
+    )
+
+    gsum = data[n('g')][w].sum(axis=0)
+    gsqsum = ( data[n('g')][w]**2 ).sum(axis=0)
+
+    if do_weights:
+        wts = np.ones( (w.size,2), dtype='f8')
+        wsum = wts.sum()
+        wsqsum = (wts**2).sum(axis=0)
+
+        return gsum, gsqsum, wsum, wsqsum
+    else:
+        return gsum, gsqsum
+
+def do_all_sums(fname, select=None):
+
+    dt=get_sums_dt()
+    output=np.zeros(1, dtype=dt)
+    o1=output[0]
+
+    with fitsio.FITS(fname) as fits:
+        for type in ['noshear','1p','1m','2p','2m']:
+            data = fits[type][:]
+            if type=='noshear':
+                gsum, gsqsum, wsum, wsqsum=do_sums(
+                    data,
+                    select=select,
+                    do_weights=True,
+                )
+                o1['wsum']=wsum
+                o1['wsq']=wsqsum
+            else:
+                gsum, gsqsum=do_sums(
+                    data,
+                    select=select,
+                    do_weights=False,
+                )
+
+            o1[n('g')] = gsum
+            o1[n('gsq')] = gsqsum
+
+    return output
+
+def main():
+    args=parser.parse_args()
+
+    if args.select is not None:
+        d = dbsim.files.read_config_file('select-'+args.select)
+        select = d['select'].strip()
+    else:
+        select = None
+
+    def dorun(fname):
+        return do_all_sums(fname, select=select)
+
+    if navy.rank == navy.ADMIRAL:
+
+        dir=dbsim.files.get_output_dir(do_all_sums)
+        pattern=os.path.join(dir, '*.fits')
+        flist=glob(pattern)
+        flist.sort()
+
+        flist=flist[0:10]
+
+        admiral = navy.Admiral(flist)
+        admiral.orchestrate()
+
+        sums = add_all_sums(admiral.reports)
+
+        summer=dbsim.averaging.Summer(args)
+        summer.write_sums(args.runs, sums)
+
+    else:
+        ship = navy.Ship(dorun)
+        ship.go()
+
+
+
+main()
