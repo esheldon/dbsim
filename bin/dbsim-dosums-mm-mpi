@@ -6,6 +6,7 @@ mpirun -n 8 dbsim-dosums-mm-api
 import os
 from glob import glob
 import numpy as np
+import fitsio
 import esutil as eu
 import dbsim
 import navy
@@ -27,11 +28,11 @@ def add_all_sums(sums_list):
 
     for tsums in sums_list[1:]:
         for n in sums.dtype.names:
-                sums[n] += tsums[n]
+            sums[n] += tsums[n]
 
     return sums
 
-def get_sums_dt(self):
+def get_sums_dt():
     dt=[
         ('wsum','f8'),
         ('g','f8',2),
@@ -45,7 +46,7 @@ def get_sums_dt(self):
     ]
     return dt
 
-def do_sums(args, data, select=None, do_weights=False):
+def do_sums(data, select=None, do_weights=False):
 
     n=dbsim.util.Namer(front='gauss')
 
@@ -53,8 +54,8 @@ def do_sums(args, data, select=None, do_weights=False):
         s2n=data[n('s2n')]
         Tratio=data[n('T_ratio')]
 
-        logic=eval(self.select)
-        w,=where(logic)
+        logic=eval(select)
+        w,=np.where(logic)
     else:
         w=np.arange(data.size)
 
@@ -76,8 +77,12 @@ def do_all_sums(fname, select=None):
     output=np.zeros(1, dtype=dt)
     o1=output[0]
 
+    print('processing:',fname)
     with fitsio.FITS(fname) as fits:
         for type in ['noshear','1p','1m','2p','2m']:
+
+            n=dbsim.util.Namer(back=type)
+
             data = fits[type][:]
             if type=='noshear':
                 do_weights=True
@@ -87,15 +92,15 @@ def do_all_sums(fname, select=None):
             res=do_sums(
                 data,
                 select=select,
-                do_weights=False,
+                do_weights=True,
             )
 
-            if do_weights:
+            if type=='noshear':
                 o1['wsum']=res['wsum']
                 o1['wsq']=res['wsqsum']
+                o1[n('gsq')] = res['gsqsum']
 
             o1[n('g')] = res['gsum']
-            o1[n('gsq')] = res['gsqsum']
 
     return output
 
@@ -113,20 +118,21 @@ def main():
 
     if navy.rank == navy.ADMIRAL:
 
-        dir=dbsim.files.get_output_dir(do_all_sums)
+        dir=dbsim.files.get_output_dir(args.run)
+
         pattern=os.path.join(dir, '*.fits')
         flist=glob(pattern)
         flist.sort()
-
-        flist=flist[0:10]
 
         admiral = navy.Admiral(flist)
         admiral.orchestrate()
 
         sums = add_all_sums(admiral.reports)
 
-        summer=dbsim.averaging.Summer(args)
-        summer.write_sums(args.runs, sums)
+        outfile=dbsim.files.get_sums_url(args.run, extra=args.select)
+        eu.ostools.makedirs_fromfile(outfile)
+        print("writing:",outfile)
+        fitsio.write(outfile, sums, clobber=True)
 
     else:
         ship = navy.Ship(dorun)
