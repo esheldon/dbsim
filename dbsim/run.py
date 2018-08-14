@@ -7,7 +7,6 @@ import esutil as eu
 import ngmix
 from . import simulation
 from . import fitters
-from .fitters import MOFFitter, MetacalFitter
 
 logger = logging.getLogger(__name__)
 
@@ -105,7 +104,7 @@ def do_meta(sim, fit_conf, fitter, show=False):
     mtype=fit_conf['meta']['type']
     if mtype=='meta-detect':
         tup = do_meta_detect(sim, fit_conf, fitter, show=False)
-    elif mtype=='meta-mof':
+    elif mtype in ['meta-mof','meta-max']:
         tup = do_meta_mof(sim, fit_conf, fitter, show=False)
     else:
         raise ValueError("bad meta type: '%s'" % mtype)
@@ -146,6 +145,8 @@ def do_meta_detect(sim, fit_conf, fitter, show=False):
 def do_meta_mof(sim, fit_conf, fitter, show=False):
     """
     metacal the MOF process but not detection
+
+    also can do without mof
 
     build the catalog based on original images, but then
     run MOF on sheared versions
@@ -343,15 +344,17 @@ def get_fitter(sim_conf, fit_conf, fitrng):
         else:
             mof_fitter=None
 
-        fitter=MetacalFitter(
+        fitter=fitters.MetacalFitter(
             fit_conf,
             sim_conf['nband'],
             fitrng,
             mof_fitter=mof_fitter,
         )
     elif fit_conf['fitter']=='mof':
-        fitter = MOFFitter(fit_conf, sim_conf['nband'], fitrng)
+        fitter = fitters.MOFFitter(fit_conf, sim_conf['nband'], fitrng)
 
+    elif fit_conf['fitter']=='max':
+        fitter = fitters.MaxFitter(fit_conf, sim_conf['nband'], fitrng)
     else:
         raise ValueError("bad fitter: '%s'" % fit_conf['fitter'])
 

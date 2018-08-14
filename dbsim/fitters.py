@@ -459,6 +459,232 @@ class MetacalFitter(FitterBase):
             verbose=False,
         )
 
+class MaxFitter(FitterBase):
+    """
+    run a max like fitter
+    """
+    def __init__(self, *args, **kw):
+
+        self.mof_fitter=kw.pop('mof_fitter',None)
+
+        super(MaxFitter,self).__init__(*args, **kw)
+
+        self.prior = self._get_prior(self['max'])
+
+
+    def go(self, mbobs_list_input):
+        """
+        do all fits and return fitter, data
+
+        metacal data are appended to the mof data for each object
+        """
+
+        if self.mof_fitter is not None:
+            # for mof fitting, we expect a list of mbobs_lists
+            fitter, mof_data = self.mof_fitter.go(
+                mbobs_list_input,
+                get_fitter=True,
+            )
+            if mof_data is None:
+                return None
+
+            # this gets all objects, all bands in a list of MultiBandObsList
+            mbobs_list = fitter.make_corrected_obs()
+
+        else:
+            mbobs_list = mbobs_list_input
+            mof_data=None
+
+        return self._do_all_fits(mbobs_list, data=mof_data)
+
+
+    def _do_all_fits(self, mbobs_list, data=None):
+        """
+        run metacal on all objects
+
+        if some fail they will not be placed into the final output
+        """
+
+        nband=len(mbobs_list[0])
+
+        datalist=[]
+        for i,mbobs in enumerate(mbobs_list):
+            if self._check_flags(mbobs):
+                try:
+                    boot, pres=self._do_one_fit(mbobs)
+                    res=boot.get_max_fitter().get_result()
+                except (BootPSFFailure, BootGalFailure):
+                    res={'flags':1}
+
+                if res['flags'] != 0:
+                    logger.debug("        metacal fit failed")
+                else:
+                    # make sure we send an array
+                    fit_data = self._get_output(res, pres, nband)
+                    if data is not None:
+                        odata = data[i:i+1]
+                        fit_data = eu.numpy_util.add_fields(
+                            fit_data,
+                            odata.dtype.descr,
+                        )
+                        eu.numpy_util.copy_fields(odata, fit_data)
+
+                    self._print_result(fit_data)
+                    datalist.append(fit_data)
+
+        if len(datalist) == 0:
+            return None
+
+        output = eu.numpy_util.combine_arrlist(datalist)
+        return output
+
+
+    def _do_one_fit(self, mbobs):
+        conf=self['max']
+
+        psf_pars=conf['psf']
+        max_conf=conf['max_pars']
+
+        tpsf_obs=mbobs[0][0].psf
+        if not tpsf_obs.has_gmix():
+            _fit_one_psf(tpsf_obs, psf_pars)
+
+        psf_Tguess=tpsf_obs.gmix.get_T()
+
+        boot=self._get_bootstrapper(mbobs)
+
+        boot.fit_psfs(
+            psf_pars['model'],
+            psf_Tguess,
+            fit_pars=psf_pars['lm_pars'],
+            ntry=psf_pars['ntry'],
+        )
+        boot.fit_max(
+
+            conf['model'],
+            max_conf['pars'],
+
+            prior=self.prior,
+            ntry=max_conf['ntry'],
+        )
+
+        pres=self._get_object_psf_stats(boot.mb_obs_list)
+        return boot, pres
+
+    def _check_flags(self, mbobs):
+        """
+        only one epoch, so anything that hits an edge
+        """
+        flags=self['metacal'].get('bmask_flags',None)
+
+        isok=True
+        if flags is not None:
+            for obslist in mbobs:
+                for obs in obslist:
+                    w=np.where( (obs.bmask & flags) != 0 )
+                    if w[0].size > 0:
+                        logger.info("   EDGE HIT")
+                        isok = False
+                        break
+
+        return isok
+
+
+    def _print_result(self, data):
+        n=self._get_namer()
+        mess="        s2n: %g Trat: %g"
+        logger.debug(mess % (data[n('s2n')][0], data[n('T_ratio')][0]))
+
+    def _get_namer(self):
+        model=self['max']['model']
+        return Namer(front=model)
+
+    def _get_dtype(self, npars, nband):
+        dt=[]
+
+        n=self._get_namer()
+        dt += [
+            ('psf_g','f8',2),
+            ('psf_T','f8'),
+            (n('nfev'),'i4'),
+            (n('s2n'),'f8'),
+            (n('pars'),'f8',npars),
+            (n('pars_cov'),'f8',(npars,npars)),
+            (n('g'),'f8',2),
+            (n('g_cov'),'f8',(2,2)),
+            (n('T'),'f8'),
+            (n('T_err'),'f8'),
+            (n('T_ratio'),'f8'),
+            (n('flux'),'f8',nband),
+            (n('flux_cov'),'f8',(nband,nband)),
+            (n('flux_err'),'f8',nband),
+        ]
+
+        return dt
+
+    def _get_output(self, res, pres, nband):
+        npars=len(res['pars'])
+        dt = self._get_dtype(npars, nband)
+        data = np.zeros(1, dtype=dt)
+
+        n=self._get_namer()
+
+        data0=data[0]
+
+        data0['psf_g'] = pres['g']
+        data0['psf_T'] = pres['T']
+
+        for name in res:
+            nn=n(name)
+            if nn in data.dtype.names:
+                data0[nn] = res[name]
+
+        # this relies on noshear coming first in the metacal
+        # types
+        data0[n('T_ratio')] = data0[n('T')]/data0['psf_T']
+
+        return data
+
+    def _get_bootstrapper(self, mbobs):
+        from ngmix.bootstrap import Bootstrapper
+
+        return Bootstrapper(
+            mbobs,
+            verbose=False,
+        )
+
+    def _get_object_psf_stats(self, mbobs):
+        """
+        get the s/n for the given object.  This uses just the model
+        to calculate the s/n, but does use the full weight map
+        """
+        g1sum=0.0
+        g2sum=0.0
+        Tsum=0.0
+        wsum=0.0
+
+        for band,obslist in enumerate(mbobs):
+            for obsnum,obs in enumerate(obslist):
+                twsum=obs.weight.sum()
+                wsum += twsum
+
+                tg1, tg2, tT = obs.psf.gmix.get_g1g2T()
+
+                g1sum += tg1*twsum
+                g2sum += tg2*twsum
+                Tsum += tT*twsum
+
+        g1 = g1sum/wsum
+        g2 = g2sum/wsum
+        T = Tsum/wsum
+
+        return {
+            'g':[g1,g2],
+            'T':T,
+        }
+
+
+
 def _fit_all_psfs(mbobs_list, psf_conf):
     """
     fit all psfs in the input observations
