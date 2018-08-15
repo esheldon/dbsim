@@ -575,7 +575,7 @@ class MaxFitter(FitterBase):
         """
         only one epoch, so anything that hits an edge
         """
-        flags=self['metacal'].get('bmask_flags',None)
+        flags=self['max'].get('bmask_flags',None)
 
         isok=True
         if flags is not None:

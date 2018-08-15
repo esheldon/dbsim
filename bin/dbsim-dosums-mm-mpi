@@ -52,10 +52,14 @@ def do_sums(data, select=None, do_weights=False):
 
     if select is not None:
         s2n=data[n('s2n')]
+        f=data[n('flux')]
+        fe=data[n('flux_err')]
+        flux_s2n = np.sqrt( ( (f/fe)**2 ).sum(axis=1) )
         Tratio=data[n('T_ratio')]
 
         logic=eval(select)
         w,=np.where(logic)
+        print('    kept %d/%d %g' % (w.size,data.size,float(w.size)/data.size))
     else:
         w=np.arange(data.size)
 
