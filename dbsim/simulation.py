@@ -430,7 +430,9 @@ class Sim(dict):
     def _set_psf(self):
         import galsim
 
-        self.psf = galsim.Gaussian(fwhm=0.9)
+        self.psf = galsim.Gaussian(
+            fwhm=self['psf']['fwhm'],
+        )
 
     def _get_hlr_flux(self):
         if 'hlr_flux' in self['pdfs']:
