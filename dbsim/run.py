@@ -340,7 +340,7 @@ def get_fitter(sim_conf, fit_conf, fitrng):
     """
     if fit_conf['fitter']=='metacal':
         if fit_conf['fofs']['find_fofs']:
-            mof_fitter = MOFFitter(fit_conf, sim_conf['nband'], fitrng)
+            mof_fitter = fitters.MOFFitter(fit_conf, sim_conf['nband'], fitrng)
         else:
             mof_fitter=None
 
