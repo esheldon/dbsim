@@ -252,16 +252,22 @@ class Sim(dict):
             self.flux_pdf = self._make_flux_pdf()
 
     def _make_hlr_flux_pdf(self):
-        from .pdfs import CosmosSampler
         c=self['pdfs']['hlr_flux']
-        assert c['type']=='cosmos'
 
-        return CosmosSampler(
-            rng=self.rng,
-            flux_range=c['flux_range'],
-            r50_range=c['r50_range'],
-            flux_mult=c['flux_mult'],
-        )
+        if c['type']=='cosmos':
+
+            return pdfs.CosmosSampler(
+                rng=self.rng,
+                flux_range=c['flux_range'],
+                r50_range=c['r50_range'],
+                flux_mult=c['flux_mult'],
+            )
+        elif c['type'] == 'cosmos-extrap':
+            return pdfs.CosmosExtrap(
+                flux_mult=c['flux_mult'],
+            )
+        else:
+            raise ValueError('bad hlr_flux type: "%s"' % c['type'])
 
     def _make_bulge_pdfs(self):
         self.bulge_hlr_frac_pdf=self._make_bulge_hlr_frac_pdf()

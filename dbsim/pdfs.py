@@ -1,6 +1,7 @@
 import os
 import numpy as np
 import ngmix
+import esutil as eu
 
 class CosmosSampler(object):
     def __init__(self,
@@ -162,3 +163,90 @@ class Constant(object):
 
     def sample(self):
         return self.value
+
+class CosmosExtrap(object):
+    def __init__(self,
+                 flux_range=[0.5, 100.0],
+                 flux_index=-1.7,
+                 r50_flux_line=[ 0.32386486, -0.92480346],
+                 r50_flux_scatter=0.26,
+                 flux_mult=None,
+                 rng=None):
+        """
+        parameters
+        ----------
+        flux_range: 2-element sequence
+            Range of flux to draw
+        flux_index: float
+            the flux histogram is assumed to go as flux^flux_index
+        r50_flux_line: 2-element sequence
+            log10(r50) = l[0]*log10(flux) + l[1] + scatter
+        r50_flux_scatter: float
+            scatter around the log10(r50) vs log10(flux) relation
+        flux_mult: float
+            Factor to multiply fluxes after generation
+        rng: numpy RandomState
+            if not sent, one is created
+        """
+        if rng is None:
+            self.rng=np.random.RandomState()
+
+        self.flux_range=flux_range
+        self.flux_index=flux_index
+        self.r50_flux_line=r50_flux_line
+        self.r50_flux_scatter=r50_flux_scatter
+
+        self.r50_flux_ply=np.poly1d(self.r50_flux_line)
+
+        self.flux_pdf = eu.random.Generator(
+            lambda x: x**self.flux_index,
+            xrange=flux_range,
+            nx=100,
+            method='cut',
+            rng=self.rng,
+        )
+
+        self.flux_mult=flux_mult
+
+    def sample(self, size=None):
+        """
+        sample flux and size
+
+        parameters
+        ----------
+        size: integer
+            Number of samples.  If not sent, or None,
+            a pair [r50, flux] is returned. Otherwise
+            it is an array [size, 2]
+        """
+        if size is None:
+            size=1
+            is_scalar=True
+        else:
+            is_scalar=False
+
+
+        flux = self.flux_pdf.sample(size)
+
+        log10flux = np.log10(flux)
+        log10r50 = self.r50_flux_ply(log10flux)
+        log10r50 += self.rng.normal(
+            scale=self.r50_flux_scatter,
+            size=size,
+        )
+
+        r50 = 10.0**( log10r50 )
+
+        output=np.zeros( (size, 2) )
+        output[:,0] = r50
+        output[:,1] = flux
+
+        if self.flux_mult is not None:
+            output[:,1] *= self.flux_mult
+
+        if is_scalar:
+            output=output[0,:]
+
+        return output
+
+
