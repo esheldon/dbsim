@@ -85,7 +85,9 @@ class Sim(dict):
         show: bool
             If True show the image used for making meds
         """
-        mm=self.get_multiband_meds(obs=obs, cat=cat, seg=seg)
+        #mm=self.get_multiband_meds(obs=obs, cat=cat, seg=seg)
+        medser=self.get_medsifier(cat=cat, seg=seg, obs=obs)
+        mm=medser.get_multiband_meds()
 
         if obs is not None:
             logger.info("assuming psfs are all the same")
@@ -124,6 +126,11 @@ class Sim(dict):
                 mbobs_list.append( mbobs )
 
             self._set_psfs(mbobs_list, psf_obs=psf_obs)
+
+            if self.get('set_noise_images',False):
+                #logger.debug('setting noise images')
+                self._set_noise_images(mbobs_list, medser.seg)
+
             fof_mbobs_lists.append( mbobs_list )
 
         return fof_mbobs_lists
@@ -148,7 +155,11 @@ class Sim(dict):
 
         this runs sep on the image
         """
-        mm=self.get_multiband_meds(cat=cat, seg=seg, obs=obs)
+
+        #mm=self.get_multiband_meds(cat=cat, seg=seg, obs=obs)
+        medser=self.get_medsifier(cat=cat, seg=seg, obs=obs)
+        mm=medser.get_multiband_meds()
+
         mbobs_list = mm.get_mbobs_list(weight_type=weight_type)
 
         if obs is not None:
@@ -158,8 +169,68 @@ class Sim(dict):
             psf_obs=None
 
         self._set_psfs(mbobs_list, psf_obs=psf_obs)
+        if self.get('set_noise_images',False):
+            #logger.debug('setting noise images')
+            self._set_noise_images(mbobs_list, medser.seg)
 
         return mbobs_list
+
+    def _set_noise_images(self, mbobs_list, seg):
+        """
+        find postage stamps with no objects in
+        them and use them as noise images
+
+        assume seg map same everywhere
+        """
+        imcen=(np.array(self.obs[0][0].image.shape)-1.0)/2.0
+
+        for mbobs in mbobs_list:
+            # assume all same dimensions
+            dims=mbobs[0][0].image.shape
+            while True:
+
+                # choose a random position and see if
+                # it is an empty patch
+
+                cen = imcen + self.position_pdf.sample()
+                subseg = self._get_patch(cen, seg, dims)
+
+                # empty patches have segmap entirely
+                # zero
+                if not np.all(subseg==0):
+                    continue
+
+                for band,obslist in enumerate(mbobs):
+                    for obsnum,obs in enumerate(obslist):
+                        im=self.obs[band][obsnum].image
+                        obs.noise=self._get_patch(cen, im, dims)
+
+                # if we get here, we have set the noise image
+                # for this object
+                break
+
+    def _get_patch(self, cen, im, dims):
+        """
+        extract a patch from the image
+
+        leave it to the caller to make sure the position
+        is what they want
+        """
+
+        row,col = cen.astype('i4')
+        rowhalf = dims[0]//2
+        colhalf = dims[1]//2
+        start_row = row - rowhalf + 1
+        start_col = col - colhalf + 1
+        end_row   = row + rowhalf + 1 # plus one for slices
+        end_col   = col + colhalf + 1
+
+        subim=im[
+            start_row:end_row,
+            start_col:end_col,
+        ]
+
+        return subim
 
     def _set_psfs(self, mbobs_list, psf_obs=None):
         for mbobs in mbobs_list:
@@ -599,7 +670,9 @@ class Sim(dict):
                 fh=c['filter_width'],
             )
             bkg_image = bkg.back()
-            logger.debug("    bkg median: %g" % np.median(bkg_image))
+            med=np.median(bkg_image)
+            logger.debug('    bkg median: '
+                         '%g rms: %g' % (med,bkg.globalrms))
             im -= bkg_image
 
     def get_all_metacal(self, **metacal_pars):
