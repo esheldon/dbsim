@@ -113,6 +113,8 @@ class Sim(dict):
         hist,rev=eu.stat.histogram(fofs['fofid'], rev=True)
 
         fof_mbobs_lists=[]
+        nconf=self.get("noise_images",None)
+
         for i in range(hist.size):
             assert rev[i] != rev[i+1],'all fof groups should be populated'
             w=rev[ rev[i]:rev[i+1] ]
@@ -127,7 +129,8 @@ class Sim(dict):
 
             self._set_psfs(mbobs_list, psf_obs=psf_obs)
 
-            if self.get('set_noise_images',False):
+            if (nconf is not None 
+                    and nconf['set_noise_images']):
                 #logger.debug('setting noise images')
                 self._set_noise_images(mbobs_list, medser.seg)
 
@@ -169,7 +172,10 @@ class Sim(dict):
             psf_obs=None
 
         self._set_psfs(mbobs_list, psf_obs=psf_obs)
-        if self.get('set_noise_images',False):
+
+        nconf=self.get("noise_images",None)
+        if (nconf is not None 
+                and nconf['set_noise_images']):
             #logger.debug('setting noise images')
             self._set_noise_images(mbobs_list, medser.seg)
 
@@ -182,12 +188,16 @@ class Sim(dict):
 
         assume seg map same everywhere
         """
+
+        nconf=self['noise_images']
+
         imcen=(np.array(self.obs[0][0].image.shape)-1.0)/2.0
+        ncheck=nconf.get('ncheck',10)
 
         for mbobs in mbobs_list:
             # assume all same dimensions
             dims=mbobs[0][0].image.shape
-            while True:
+            for i in range(ncheck):
 
                 # choose a random position and see if
                 # it is an empty patch
@@ -196,14 +206,21 @@ class Sim(dict):
                 subseg = self._get_patch(cen, seg, dims)
 
                 # empty patches have segmap entirely
-                # zero
-                if not np.all(subseg==0):
-                    continue
+                # zero, unless we can't find one
+                if nconf['check_seg']:
+                    if ( (i != ncheck-1)
+                            and not np.all(subseg==0) ):
+                        continue
 
                 for band,obslist in enumerate(mbobs):
                     for obsnum,obs in enumerate(obslist):
                         im=self.obs[band][obsnum].image
-                        obs.noise=self._get_patch(cen, im, dims)
+                        patch=self._get_patch(cen, im, dims)
+                        
+                        if nconf['negate']:
+                            patch *= -1
+
+                        obs.noise = patch
 
                 # if we get here, we have set the noise image
                 # for this object
@@ -228,7 +245,7 @@ class Sim(dict):
         subim=im[
             start_row:end_row,
             start_col:end_col,
-        ]
+        ].copy()
 
         return subim
 
