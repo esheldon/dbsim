@@ -95,6 +95,14 @@ class FitterBase(dict):
                 rng=self.rng,
             )
 
+        elif ptype=='log-normal':
+            prior = ngmix.priors.LogNormal(
+                ppars['mean'],
+                ppars['sigma'],
+                rng=self.rng,
+            )
+
+
         elif ptype=='normal2d':
             prior=ngmix.priors.CenPrior(
                 0.0,
