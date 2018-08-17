@@ -197,7 +197,8 @@ class Sim(dict):
         for mbobs in mbobs_list:
             # assume all same dimensions
             dims=mbobs[0][0].image.shape
-            for i in range(ncheck):
+            while True:
+            #for i in range(ncheck):
 
                 # choose a random position and see if
                 # it is an empty patch
@@ -208,8 +209,9 @@ class Sim(dict):
                 # empty patches have segmap entirely
                 # zero, unless we can't find one
                 if nconf['check_seg']:
-                    if ( (i != ncheck-1)
-                            and not np.all(subseg==0) ):
+                    #if ( (i != ncheck-1)
+                    #        and not np.all(subseg==0) ):
+                    if not np.all(subseg==0):
                         continue
 
                 for band,obslist in enumerate(mbobs):
