@@ -484,10 +484,10 @@ class Sim(dict):
         )
 
         psf_im += self.rng.normal(
-            scale=self['psf_noise_sigma'],
+            scale=self['psf']['noise_sigma'],
             size=dims,
         )
-        psf_wt=np.zeros(dims)+1.0/self['psf_noise_sigma']**2
+        psf_wt=np.zeros(dims)+1.0/self['psf']['noise_sigma']**2
 
         return ngmix.Observation(
             psf_im,

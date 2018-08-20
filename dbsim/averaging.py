@@ -229,6 +229,13 @@ class Summer(dict):
 
         return sums
 
+    def _match_truth(self, data, truth):
+        return util.match_truth(
+            data,
+            truth,
+            pixel_scale=self['simc']['pixel_scale'],
+        )
+
     def do_file_sums(self, fname):
         """
         get sums for a single file
@@ -238,6 +245,17 @@ class Summer(dict):
 
         print("processing:",fname)
         data=fitsio.read(fname) 
+
+        # match to truth. might not have any matches, in
+        # which case we return early with zeros in the sums
+        if self.args.match:
+            truth=fitsio.read(fname, ext='truth_data')
+            mdata=self._match_truth(data,truth)
+            if mdata.size==0:
+                return sums
+            
+            data=data[mdata]
+
 
         if 'shear_index' not in data.dtype.names:
             data=self._add_shear_index(data)
