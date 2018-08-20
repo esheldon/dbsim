@@ -321,7 +321,7 @@ class MetacalFitter(FitterBase):
                     logger.debug("        metacal fit failed")
                 else:
                     # make sure we send an array
-                    fit_data = self._get_metacal_output(res, nband)
+                    fit_data = self._get_metacal_output(res, nband, mbobs)
                     if data is not None:
                         odata = data[i:i+1]
                         fit_data = eu.numpy_util.add_fields(
@@ -395,7 +395,11 @@ class MetacalFitter(FitterBase):
         logger.debug(mess % (data['mcal_s2n'][0], data['mcal_T_ratio'][0]))
 
     def _get_metacal_dtype(self, npars, nband):
-        dt=[]
+        dt=[
+            ('image_id','i4'),
+            ('x','f8'),
+            ('y','f8'),
+        ]
         for mtype in METACAL_TYPES:
             if mtype == 'noshear':
                 back=None
@@ -426,12 +430,20 @@ class MetacalFitter(FitterBase):
 
         return dt
 
-    def _get_metacal_output(self, allres, nband):
+    def _get_metacal_output(self, allres, nband, mbobs):
+        # assume one epoch and line up in all
+        # bands
+        assert len(mbobs[0])==1,'one epoch only'
+
+
+
         npars=len(allres['noshear']['pars'])
         dt = self._get_metacal_dtype(npars, nband)
         data = np.zeros(1, dtype=dt)
 
         data0=data[0]
+        data0['y'] = mbobs[0][0].meta['orig_row']
+        data0['x'] = mbobs[0][0].meta['orig_col']
 
         for mtype in METACAL_TYPES:
 

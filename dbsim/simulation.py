@@ -53,6 +53,12 @@ class Sim(dict):
 
         self._make_obs()
 
+    def get_truth_catalog(self):
+        """
+        get a copy of the truth catalog
+        """
+        return self._obj_data.copy()
+
     def get_obs(self):
         return self.obs
 
@@ -533,7 +539,7 @@ class Sim(dict):
                 fwhm=self['psf']['fwhm'],
             )
         elif model=='moffat': 
-            self.psf = galsim.Gaussian(
+            self.psf = galsim.Moffat(
                 self['psf']['beta'],
                 fwhm=self['psf']['fwhm'],
             )
@@ -604,13 +610,23 @@ class Sim(dict):
             all_obj['knots'] = knots
 
         obj_cen1, obj_cen2 = self.position_pdf.sample()
-        all_obj['cen'] = (obj_cen1, obj_cen2)
+        all_obj['cen'] = np.array([obj_cen1, obj_cen2])
         return all_obj
 
     def _set_objects(self):
         self.objlist=[]
 
         nobj = self._get_nobj()
+
+        self._obj_data=np.zeros(
+            nobj,
+            dtype=[
+                ('image_id','i4'),
+                ('x','f8'),
+                ('y','f8')
+            ],
+        )
+
         for i in range(nobj):
 
             obj = self._get_object()
@@ -624,13 +640,18 @@ class Sim(dict):
 
         self.imlist=[]
 
+        shear=self.get('shear',None)
+
         cdisk=self['pdfs']['disk']
         cbulge=self['pdfs'].get('bulge',None)
         cknots=self['pdfs'].get('knots',None)
 
+        dims = self['dims']
+        cen=(np.array(dims)-1.0)/2.0
+
         for band in range(self['nband']):
             objects=[]
-            for obj_parts in self.objlist:
+            for iobj,obj_parts in enumerate(self.objlist):
 
                 disk=obj_parts['disk']*cdisk['color'][band]
                 tparts=[disk]
@@ -649,19 +670,33 @@ class Sim(dict):
                     obj = galsim.Sum(tparts)
 
                 obj = obj.shift(
-                    dx=obj_parts['cen'][0],
-                    dy=obj_parts['cen'][1],
+                    dx=obj_parts['cen'][1],
+                    dy=obj_parts['cen'][0],
                 )
+
+                if shear is not None:
+                    obj = obj.shear(
+                        g1=shear[0],
+                        g2=shear[1],
+                    )
+
+                if band==0:
+                    ocen=obj.centroid
+                    row=cen[0]+ocen.y/self['pixel_scale']
+                    col=cen[1]+ocen.x/self['pixel_scale']
+                    self._obj_data['y'][iobj] = row
+                    self._obj_data['x'][iobj] = col
+
                 objects.append(obj)
 
             objects = galsim.Sum(objects)
 
-            shear=self.get('shear',None)
-            if shear is not None:
-                objects = objects.shear(
-                    g1=shear[0],
-                    g2=shear[1],
-                )
+            #shear=self.get('shear',None)
+            #if shear is not None:
+            #    objects = objects.shear(
+            #        g1=shear[0],
+            #        g2=shear[1],
+            #    )
 
             convolved_objects = galsim.Convolve(objects, self.psf)
 

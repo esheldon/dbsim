@@ -39,6 +39,7 @@ def go(sim_conf,
     metad=fit_conf['meta']
 
     datalist=[]
+    truth_list=[]
     for i in range(ntrials):
 
         logger.debug("trial: %d/%d" % (i+1,ntrials))
@@ -64,7 +65,16 @@ def go(sim_conf,
         if reslist is not None:
             nobj_detected += nobj
             tm_fit += tm
+
+            image_id = rng.randint(0,2**30)
+            for r in reslist:
+                r['image_id'] = image_id
+            truth=sim.get_truth_catalog()
+            truth['image_id'] = image_id
+
             datalist += reslist
+            truth_list += [truth]
+
             if nobj > 0:
                 nfit += 1
 
@@ -89,10 +99,11 @@ def go(sim_conf,
         logger.info("no results to write")
     else:
         if metad is not None and metad['dometa']:
-            write_meta(output_file, datalist, meta, fit_conf)
+            write_meta(output_file, datalist, truth_list, meta, fit_conf)
         else:
             data = eu.numpy_util.combine_arrlist(datalist)
-            write_output(output_file, data, meta)
+            truth_data = eu.numpy_util.combine_arrlist(truth_list)
+            write_output(output_file, data, truth_data, meta)
 
 
 def do_meta(sim, fit_conf, fitter, show=False):
@@ -376,7 +387,7 @@ def profile_sim(seed,sim_conf,fit_conf,ntrials,output_file):
     p.sort_stats('time').print_stats()
 
 
-def write_output(output_file, data, meta):
+def write_output(output_file, data, truth_data, meta):
     """
     write an output file, making the directory if needed
     """
@@ -392,8 +403,10 @@ def write_output(output_file, data, meta):
     with fitsio.FITS(output_file,'rw',clobber=True) as fits:
         fits.write(data, extname='model_fits')
         fits.write(meta, extname='meta_data')
+        fits.write(truth_data, extname='truth_data')
 
-def write_meta(output_file, datalist, meta, fit_conf):
+def write_meta(output_file, datalist, truth_list, meta, fit_conf):
+    raise 'add code to write truth'
 
     odir=os.path.dirname(output_file)
     if not os.path.exists(odir):
