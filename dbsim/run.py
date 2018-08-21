@@ -6,7 +6,10 @@ import fitsio
 import esutil as eu
 import ngmix
 from . import simulation
+from . import descwl_sim
+
 from . import fitters
+from .fitters import MOFFitter, MetacalFitter
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +27,18 @@ def go(sim_conf,
     fitseed=rng.randint(0,2**30)
     fitrng = np.random.RandomState(fitseed)
 
-    sim=simulation.Sim(sim_conf, rng)
+
+    if sim_conf['sim_type']=='descwl':
+        pos_sampler=descwl_sim.PositionSampler(sim_conf['positions'], rng)
+        cat_sampler=descwl_sim.CatalogSampler(sim_conf, rng)
+        sim=descwl_sim.DESWLSim(
+            sim_conf,
+            cat_sampler,
+            pos_sampler,
+            rng,
+        )
+    else:
+        sim=simulation.Sim(sim_conf, rng)
 
     fitter=get_fitter(sim_conf, fit_conf, fitrng)
 
@@ -349,20 +363,25 @@ def get_fitter(sim_conf, fit_conf, fitrng):
     """
     get the appropriate fitting class
     """
+    if 'bands' in sim_conf:
+        nband=len(sim_conf['bands'])
+    else:
+        nband=sim_conf['nband']
+
     if fit_conf['fitter']=='metacal':
         if fit_conf['fofs']['find_fofs']:
-            mof_fitter = fitters.MOFFitter(fit_conf, sim_conf['nband'], fitrng)
+            mof_fitter = MOFFitter(fit_conf, nband, fitrng)
         else:
             mof_fitter=None
 
         fitter=fitters.MetacalFitter(
             fit_conf,
-            sim_conf['nband'],
+            nband,
             fitrng,
             mof_fitter=mof_fitter,
         )
     elif fit_conf['fitter']=='mof':
-        fitter = fitters.MOFFitter(fit_conf, sim_conf['nband'], fitrng)
+        fitter = MOFFitter(fit_conf, nband, fitrng)
 
     elif fit_conf['fitter']=='max':
         fitter = fitters.MaxFitter(fit_conf, sim_conf['nband'], fitrng)
