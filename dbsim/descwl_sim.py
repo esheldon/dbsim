@@ -50,6 +50,7 @@ class DESWLSim(simulation.Sim):
             mbobs.append(obslist)
 
         self.obs=mbobs
+        self.cat=cat
 
         if 'background' in self:
             if self['background']['measure']:
@@ -61,12 +62,28 @@ class DESWLSim(simulation.Sim):
         """
         return self.obs[band][0].psf.copy()
 
-    def _set_psfs(self, mbobs_list):
+    def show(self):
+        """
+        show a nice image of the simulation
+        """
+        _show(self.obs)
+
+    def get_truth_catalog(self):
+        """
+        get a copy of the truth catalog
+        """
+        newcat=eu.numpy_util.add_fields(self.cat, [('image_id','i4')])
+        return newcat
+
+    def _set_psfs(self, mbobs_list, psf_obs=None):
         for mbobs in mbobs_list:
             for band,olist in enumerate(mbobs):
                 for obs in olist:
-                    psf_obs=self.get_psf_obs(band)
-                    obs.set_psf(psf_obs)
+                    if psf_obs is not None:
+                        tpsf_obs=psf_obs.copy()
+                    else:
+                        tpsf_obs=self.get_psf_obs(band)
+                    obs.set_psf(tpsf_obs)
 
 
     def _subtract_backgrounds(self):
@@ -89,12 +106,6 @@ class DESWLSim(simulation.Sim):
                 im -= bkg_image
 
 
-    def show(self):
-        """
-        show a nice image of the simulation
-        """
-        _show(self.obs)
-
     def _convert_dobs_to_obs(self, dobs):
         """
         convert a Survey object dobs to an ngmix Observation
@@ -114,8 +125,10 @@ class DESWLSim(simulation.Sim):
 
         psf_im=dobs.psf_image.array.copy()
         pmax=psf_im.max()
-        pnoise = pmax/10000.0
-        psf_im += self.rng.normal(scale=pnoise, size=psf_im.shape)
+        pnoise = pmax/1000.0
+        #psf_im += self.rng.normal(scale=pnoise, size=psf_im.shape)
+        psf_im = dobs.psf_model.drawImage(nx=32, ny=32, scale=dobs.pixel_scale)
+        psf_im = psf_im.array
         psf_weight = psf_im*0 + 1.0/pnoise**2
 
         #import images
