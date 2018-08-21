@@ -134,26 +134,39 @@ class CosmosSampler(object):
             bw_method=self.kde_factor,
         )
 
+class Flat2D(object):
+    def __init__(self, xrng, yrng, rng):
 
-class Flat2D(ngmix.priors.PriorBase):
-    def __init__(self, xrng, yrng, rng=None):
-        super(Flat2D,self).__init__(rng=rng)
+        self.rng=rng
 
         assert len(xrng)==2
         assert len(yrng)==2
+
         self.xrng=xrng
         self.yrng=yrng
 
-    def sample(self):
-        output=np.zeros(2)
-        output[0] = self.rng.uniform(
+    def sample(self, size=None):
+        if size is None:
+            size=1
+            scalar=True
+        else:
+            scalar=False
+
+        output=np.zeros( (size, 2) )
+        output[:,0] = self.rng.uniform(
             low  = self.yrng[0],
             high = self.yrng[1],
+            size=size,
         )
-        output[1] = self.rng.uniform(
+        output[:,1] = self.rng.uniform(
             low  = self.xrng[0],
             high = self.xrng[1],
+            size=size,
         )
+
+        if scalar:
+            output=output[0]
+
         return output
 
 class Constant(object):
