@@ -1,4 +1,6 @@
-def make_rgb(r, g, b):
+import numpy as np
+
+def make_rgb_old(r, g, b):
     import images
 
     maxval=max( r.max(), g.max(), b.max() )
@@ -12,3 +14,40 @@ def make_rgb(r, g, b):
     )
 
     return rgb
+
+def make_rgb(mbobs):
+    import images
+
+    #SCALE=.015*np.sqrt(2.0)
+    SCALE=0.001
+    relative_scales = np.array([1.00, 1.2, 2.0])
+    scales= SCALE*relative_scales
+
+    r=mbobs[2][0].image
+    g=mbobs[1][0].image
+    b=mbobs[0][0].image
+
+    rgb=images.get_color_image(
+        r.transpose(),
+        g.transpose(),
+        b.transpose(),
+        scales=scales,
+        nonlinear=0.12,
+    )
+    return rgb
+
+def view_mbobs(mbobs, **kw):
+    import images
+
+    rgb=make_rgb(mbobs)
+    plt=images.view(rgb, **kw)
+    return plt
+
+
+def view_mbobs_list(mbobs_list, **kw):
+    import images
+    import plotting
+
+    imlist=[make_rgb(mbobs) for mbobs in mbobs_list]
+    plt=images.view_mosaic(imlist, **kw)
+    return plt

@@ -11,6 +11,8 @@ from . import descwl_sim
 from . import fitters
 from .fitters import MOFFitter, MetacalFitter
 
+from . import visualize
+
 logger = logging.getLogger(__name__)
 
 def go(sim_conf,
@@ -258,9 +260,21 @@ def do_fits(sim,
     else:
 
         if fof_conf['find_fofs']:
+            if show:
+                for i,mbl in enumerate(mbobs_list):
+                    title='FoF %d/%d' % (i+1,len(mbobs_list))
+                    visualize.view_mbobs_list(mbl,title=title,dims=[800,800])
+                if 'q'==input('hit a key (q to quit): '):
+                    stop
             # mbobs_list is really a list of those
             reslist, nobj, tm_fit = run_fofs(fitter, mbobs_list)
         else:
+
+            if show:
+                visualize.view_mbobs_list(mbobs_list)
+                if 'q'==input('hit a key (q to quit): '):
+                    stop
+
             reslist, nobj, tm_fit = run_one_fof(fitter, mbobs_list)
 
         logger.debug("    processed %d objects" % nobj)

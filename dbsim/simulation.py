@@ -311,6 +311,13 @@ class Sim(dict):
         """
         show a nice image of the simulation
         """
+        visualize.view_mbobs(self.obs)
+
+    '''
+    def show(self):
+        """
+        show a nice image of the simulation
+        """
         import images
         #images.view(self.obs[2][0].image)
         rgb=self.get_color_image()
@@ -326,6 +333,7 @@ class Sim(dict):
             self.obs[1][0].image,
             self.obs[0][0].image,
         )
+    '''
 
     def _make_g_pdf(self):
         c=self['pdfs']['g']

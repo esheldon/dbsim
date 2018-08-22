@@ -9,6 +9,7 @@ import ngmix
 import esutil as eu
 from . import simulation
 from . import pdfs
+from . import visualize
 
 class DESWLSim(simulation.Sim):
     def __init__(self,
@@ -61,12 +62,6 @@ class DESWLSim(simulation.Sim):
         make a copy of the psf
         """
         return self.obs[band][0].psf.copy()
-
-    def show(self):
-        """
-        show a nice image of the simulation
-        """
-        _show(self.obs)
 
     def get_truth_catalog(self):
         """
@@ -223,6 +218,8 @@ class DESWLSim(simulation.Sim):
         pars['filter_band'] = band
         pars['image_width'] = dims[1]
         pars['image_height'] = dims[0]
+        pars['cosmic_shear_g1'] = self['shear'][0]
+        pars['cosmic_shear_g2'] = self['shear'][1]
 
         return descwl.survey.Survey(**pars)
 
@@ -321,27 +318,4 @@ class CatalogSampler(dict):
 
         print('density of catalog: %.1f per square '
               'arcminute' % self['density_arcmin2'])
-
-def _show(mbobs):
-    import images
-
-    #SCALE=.015*np.sqrt(2.0)
-    SCALE=0.001
-    relative_scales = np.array([1.00, 1.2, 2.0])
-    scales= SCALE*relative_scales
-
-    r=mbobs[2][0].image
-    g=mbobs[1][0].image
-    b=mbobs[0][0].image
-
-    rgb=images.get_color_image(
-        r.transpose(),
-        g.transpose(),
-        b.transpose(),
-        scales=scales,
-        nonlinear=0.12,
-    )
-
-    images.view(rgb)
-
 
