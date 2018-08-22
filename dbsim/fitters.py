@@ -316,6 +316,10 @@ class MetacalFitter(FitterBase):
                     res=boot.get_metacal_result()
                 except (BootPSFFailure, BootGalFailure):
                     res={'mcal_flags':1}
+                except RuntimeError as err:
+                    # argh galsim and its generic errors
+                    logger.info('caught RuntimeError: %s' % str(err))
+                    res={'mcal_flags':1}
 
                 if res['mcal_flags'] != 0:
                     logger.debug("        metacal fit failed")
@@ -353,6 +357,11 @@ class MetacalFitter(FitterBase):
         psf_Tguess=tpsf_obs.gmix.get_T()
 
         boot=self._get_bootstrapper(mbobs)
+        if 'lm_pars' in psf_pars:
+            psf_fit_pars=psf_pars['lm_pars']
+        else:
+            psf_fit_pars=None
+
         boot.fit_metacal(
 
             psf_pars['model'],
@@ -361,7 +370,7 @@ class MetacalFitter(FitterBase):
             max_conf['pars'],
 
             psf_Tguess,
-            psf_fit_pars=psf_pars['lm_pars'],
+            psf_fit_pars=psf_fit_pars,
             psf_ntry=psf_pars['ntry'],
 
             prior=self.metacal_prior,
@@ -416,6 +425,7 @@ class MetacalFitter(FitterBase):
             dt += [
                 (n('nfev'),'i4'),
                 (n('s2n'),'f8'),
+                (n('s2n_r'),'f8'),
                 (n('pars'),'f8',npars),
                 (n('pars_cov'),'f8',(npars,npars)),
                 (n('g'),'f8',2),
@@ -729,12 +739,24 @@ class AllPSFFitter(object):
 def _fit_one_psf(obs, pconf):
     Tguess=4.0*obs.jacobian.get_scale()**2
 
-    runner=ngmix.bootstrap.PSFRunner(
-        obs,
-        pconf['model'],
-        Tguess,
-        pconf['lm_pars'],
-    )
+    if 'coellip' in pconf['model']:
+        ngauss=ngmix.bootstrap.get_coellip_ngauss(pconf['model'])
+        runner=ngmix.bootstrap.PSFRunnerCoellip(
+            obs,
+            Tguess,
+            ngauss,
+            pconf['lm_pars'],
+        )
+
+
+    else:
+        runner=ngmix.bootstrap.PSFRunner(
+            obs,
+            pconf['model'],
+            Tguess,
+            pconf['lm_pars'],
+        )
+
     runner.go(ntry=pconf['ntry'])
 
     psf_fitter = runner.fitter
