@@ -2,6 +2,7 @@
 wrap the descwl simulations
 """
 import os
+import logging
 import numpy as np
 import fitsio
 import galsim
@@ -10,6 +11,8 @@ import esutil as eu
 from . import simulation
 from . import pdfs
 from . import visualize
+
+logger = logging.getLogger(__name__)
 
 class DESWLSim(simulation.Sim):
     def __init__(self,
@@ -34,7 +37,7 @@ class DESWLSim(simulation.Sim):
         make a new MultiBandObsList, sampling from the catalog
         """
         cat=self.catalog_sampler.sample(area=self['area'])
-        print('rendering:',cat.size)
+        logger.debug('rendering: %d' % cat.size)
 
         # offsets in arcminutes
         pos_yx = self.position_sampler.sample(size=cat.size)
@@ -119,16 +122,25 @@ class DESWLSim(simulation.Sim):
         weight = im*0 + 1.0/noise**2
 
         psf_im=dobs.psf_image.array.copy()
-        pmax=psf_im.max()
-        pnoise = pmax/1000.0
-        #psf_im += self.rng.normal(scale=pnoise, size=psf_im.shape)
-        psf_im = dobs.psf_model.drawImage(nx=32, ny=32, scale=dobs.pixel_scale)
-        psf_im = psf_im.array
+        psf_im = dobs.psf_model.drawImage(
+            nx=32,
+            ny=32,
+            scale=dobs.pixel_scale,
+        ).array
+        psf_im *= 1.0/psf_im.sum()
+
+        pnoise = psf_im.max()/400.0
+        psf_s2n = np.sqrt( (psf_im**2).sum())/pnoise
+        logger.debug('    psf s2n: %f' % psf_s2n)
+
+        psf_im += self.rng.normal(scale=pnoise, size=psf_im.shape)
+
         psf_weight = psf_im*0 + 1.0/pnoise**2
 
         #import images
-        #images.multiview(psf_im)
+        #images.multiview(psf_im,title='psf')
         #stop
+
         psf_obs=ngmix.Observation(
             psf_im,
             weight=psf_weight,
@@ -304,8 +316,13 @@ class CatalogSampler(dict):
 
         dir=os.environ['CATSIM_DIR']
         fname=os.path.join(dir, 'OneDegSq.fits')
-        print('reading:',fname)
+        logger.debug('reading: %s' % fname)
         self.cat=fitsio.read(fname)
+        self.cat['pa_disk'] = self.rng.uniform(low=0.0, high=360.0, size=self.cat.size)
+        self.cat['pa_bulge'] = self.cat['pa_disk']
+        #import biggles
+        #biggles.plot_hist(self.cat['pa_disk'],nbin=100)
+        #stop
         self.cat_indices=np.arange(self.cat.size)
 
     def _set_density(self):
@@ -316,6 +333,6 @@ class CatalogSampler(dict):
 
         self['density_arcmin2']=nobj/area_arcmin2
 
-        print('density of catalog: %.1f per square '
-              'arcminute' % self['density_arcmin2'])
+        logger.debug('density of catalog: %.1f per square '
+                     'arcminute' % self['density_arcmin2'])
 
