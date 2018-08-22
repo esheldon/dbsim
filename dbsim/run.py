@@ -25,10 +25,14 @@ def go(sim_conf,
     """
     run the simulation and fitter
     """
-    rng = np.random.RandomState(seed)
-    fitseed=rng.randint(0,2**30)
-    fitrng = np.random.RandomState(fitseed)
+    logger.info('seed: %d' % seed)
 
+    np.random.seed(seed)
+    simseed=np.random.randint(0,2**30)
+    fitseed=np.random.randint(0,2**30)
+
+    rng = np.random.RandomState(simseed)
+    fitrng = np.random.RandomState(fitseed)
 
     if sim_conf['sim_type']=='descwl':
         pos_sampler=descwl_sim.PositionSampler(sim_conf['positions'], rng)
