@@ -33,20 +33,18 @@ def add_all_sums(sums_list):
     return sums
 
 def get_sums_dt():
-    dt=[
-        ('wsum','f8',2),
-        ('g','f8',2),
-        ('gsq','f8',2),
-        ('wsq','f8',2),
-
-        ('g_1p','f8',2),
-        ('g_1m','f8',2),
-        ('g_2p','f8',2),
-        ('g_2m','f8',2),
-    ]
+    dt=[]
+    for type in ['noshear','1p','1m','2p','2m']:
+        n=dbsim.util.Namer(back=type)
+        dt += [
+            (n('g'),'f8',2),
+            (n('gsq'),'f8',2),
+            (n('wsum'),'f8',2),
+            (n('wsq'),'f8',2),
+        ]
     return dt
 
-def do_sums(fit_conf, data, select=None, do_weights=False):
+def do_sums(fit_conf, data, select=None):
 
     model=fit_conf['max']['model']
 
@@ -69,11 +67,9 @@ def do_sums(fit_conf, data, select=None, do_weights=False):
     res['gsum'] = data[n('g')][w].sum(axis=0)
     res['gsqsum'] = ( data[n('g')][w]**2 ).sum(axis=0)
 
-
-    if do_weights:
-        wts = np.ones( (w.size,2), dtype='f8')
-        res['wsum'] = wts.sum(axis=0)
-        res['wsqsum'] = (wts**2).sum(axis=0)
+    wts = np.ones( (w.size,2), dtype='f8')
+    res['wsum'] = wts.sum(axis=0)
+    res['wsqsum'] = (wts**2).sum(axis=0)
 
     return res
 
@@ -90,24 +86,17 @@ def do_all_sums(fit_conf, fname, select=None):
             n=dbsim.util.Namer(back=type)
 
             data = fits[type][:]
-            if type=='noshear':
-                do_weights=True
-            else:
-                do_weights=False
 
             res=do_sums(
                 fit_conf,
                 data,
                 select=select,
-                do_weights=True,
             )
 
-            if type=='noshear':
-                o1['wsum']=res['wsum']
-                o1['wsq']=res['wsqsum']
-                o1[n('gsq')] = res['gsqsum']
-
-            o1[n('g')] = res['gsum']
+            o1[n('g')]    = res['gsum']
+            o1[n('wsum')] = res['wsum']
+            o1[n('wsq')]  = res['wsqsum']
+            o1[n('gsq')]  = res['gsqsum']
 
     return output
 

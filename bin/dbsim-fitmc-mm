@@ -26,7 +26,7 @@ def add_sums(sums, tsums):
 
 def average_shear(sums):
     dt=[
-        ('R','f8',2),
+        ('R','f8', (2,2) ),
         ('shear','f8',2),
         ('shear_err','f8',2),
         ('shear_true','f8',2),
@@ -34,26 +34,32 @@ def average_shear(sums):
     output = eu.numpy_util.add_fields(sums, dt)
     st=output[0]
 
-    g = st['g']/st['wsum']
+    g_mean = st['g']/st['wsum']
+    gsq_mean = st['gsq']/st['wsum']
 
-    gerrsq_sum = st['gsq'] - g**2*st['wsq']
-    gerr = np.sqrt(gerrsq_sum)/st['wsum']
+    g_err = np.sqrt( (gsq_mean - g_mean**2)/st['wsum'] )
 
-    step=0.02
+    g1p_mean = st['g_1p']/st['wsum_1p']
+    g1m_mean = st['g_1m']/st['wsum_1m']
+    g2p_mean = st['g_2p']/st['wsum_2p']
+    g2m_mean = st['g_2m']/st['wsum_2m']
 
-    g1p = st['g_1p']/st['wsum']
-    g1m = st['g_1m']/st['wsum']
-    g2p = st['g_2p']/st['wsum']
-    g2m = st['g_2m']/st['wsum']
-
-    st['R'][0] = (g1p[0] - g1m[0])/step
-    st['R'][1] = (g2p[1] - g2m[1])/step
+    st['R'][0,0] = (g1p_mean[0] - g1m_mean[0])/0.02
+    st['R'][0,1] = (g1p_mean[1] - g1m_mean[1])/0.02
+    st['R'][1,0] = (g2p_mean[0] - g2m_mean[0])/0.02
+    #st['R'][1,0] = (g1p_mean[1] - g1m_mean[1])/0.02
+    #st['R'][0,1] = (g2p_mean[0] - g2m_mean[0])/0.02
+    st['R'][1,1] = (g2p_mean[1] - g2m_mean[1])/0.02
 
     print('num:',st['wsum'][0])
-    print('R:',st['R'])
+    print('R:')
+    print(st['R'])
 
-    st['shear'] = g/st['R']
-    st['shear_err'] = gerr/st['R']
+    Rinv = np.linalg.inv(st['R'])
+    #st['shear'] = np.dot(Rinv,g_mean)
+    #st['shear_err'] = np.dot(Rinv,g_err)
+    st['shear'] = g_mean/np.diag(st['R'])
+    st['shear_err'] = g_err/np.diag(st['R'])
 
     return output
 
