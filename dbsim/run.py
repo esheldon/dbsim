@@ -119,7 +119,7 @@ def go(sim_conf,
         logger.info("no results to write")
     else:
         if metad is not None and metad['dometa']:
-            write_meta(output_file, datalist, truth_list, meta, fit_conf)
+            write_meta(output_file, datalist, meta, fit_conf)
         else:
             data = eu.numpy_util.combine_arrlist(datalist)
             truth_data = eu.numpy_util.combine_arrlist(truth_list)
@@ -402,7 +402,7 @@ def get_fitter(sim_conf, fit_conf, fitrng):
         fitter = MOFFitter(fit_conf, nband, fitrng)
 
     elif fit_conf['fitter']=='max':
-        fitter = fitters.MaxFitter(fit_conf, sim_conf['nband'], fitrng)
+        fitter = fitters.MaxFitter(fit_conf, nband, fitrng)
     else:
         raise ValueError("bad fitter: '%s'" % fit_conf['fitter'])
 
@@ -442,8 +442,7 @@ def write_output(output_file, data, truth_data, meta):
         fits.write(meta, extname='meta_data')
         fits.write(truth_data, extname='truth_data')
 
-def write_meta(output_file, datalist, truth_list, meta, fit_conf):
-    raise 'add code to write truth'
+def write_meta(output_file, datalist, meta, fit_conf):
 
     odir=os.path.dirname(output_file)
     if not os.path.exists(odir):
