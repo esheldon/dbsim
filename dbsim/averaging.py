@@ -571,6 +571,7 @@ class Summer(dict):
 
 
         s2n      = self._get_s2n(n, data, w)
+        s2n_r    = self._get_s2n_r(n, data, w)
         flux_s2n = self._get_flux_s2n(n, data, w)
         T        = self._get_T(n, data, w)
         Tratio   = self._get_T_ratio(n, data, w)
@@ -592,6 +593,13 @@ class Summer(dict):
     def _get_s2n(self, n, data, w):
         name=n('s2n')
         return data[name][w]
+
+    def _get_s2n_r(self, n, data, w):
+        name=n('s2n_r')
+        if name in data.dtype.names:
+            return data[name][w]
+        else:
+            return None
 
     def _get_T(self, n, data, w):
         name=n('T')

@@ -46,9 +46,11 @@ def get_sums_dt():
     ]
     return dt
 
-def do_sums(data, select=None, do_weights=False):
+def do_sums(fit_conf, data, select=None, do_weights=False):
 
-    n=dbsim.util.Namer(front='gauss')
+    model=fit_conf['max']['model']
+
+    n=dbsim.util.Namer(front=model)
 
     if select is not None:
         s2n=data[n('s2n')]
@@ -75,7 +77,7 @@ def do_sums(data, select=None, do_weights=False):
 
     return res
 
-def do_all_sums(fname, select=None):
+def do_all_sums(fit_conf, fname, select=None):
 
     dt=get_sums_dt()
     output=np.zeros(1, dtype=dt)
@@ -94,6 +96,7 @@ def do_all_sums(fname, select=None):
                 do_weights=False
 
             res=do_sums(
+                fit_conf,
                 data,
                 select=select,
                 do_weights=True,
@@ -111,6 +114,9 @@ def do_all_sums(fname, select=None):
 def main():
     args=parser.parse_args()
 
+    run_conf=dbsim.files.read_config_file(args.run)
+    fit_conf=dbsim.files.read_config_file(run_conf['fit'])
+
     if args.select is not None:
         d = dbsim.files.read_config_file('select-'+args.select)
         select = d['select'].strip()
@@ -118,7 +124,7 @@ def main():
         select = None
 
     def dorun(fname):
-        return do_all_sums(fname, select=select)
+        return do_all_sums(fit_conf, fname, select=select)
 
     if navy.rank == navy.ADMIRAL:
 
