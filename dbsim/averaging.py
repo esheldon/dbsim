@@ -1034,11 +1034,11 @@ def get_m_c_oneshear(data, nsig=2.0):
     print("errors are %g sigma" % nsig)
 
     fits=zeros(1, dtype=[('m','f8'),
-                               ('merr','f8'),
-                               ('c','f8'),
-                               ('cerr','f8')])
+                         ('merr','f8'),
+                         ('c','f8'),
+                         ('cerr','f8')])
     m=shmeas[mel]/shtrue[mel]-1.0
-    merr=shmeas_err[mel]/shtrue[mel]
+    merr=shmeas_err[mel]/np.abs(shtrue[mel])
 
     c=shmeas[cel]
     cerr=shmeas_err[cel]
@@ -1146,5 +1146,138 @@ def fit_m_c(data, doprint=True, onem=False, max_shear=None, nocorr_select=False,
                       r=r)
 
     return fits
+
+
+#
+# for the parallel reductions
+#
+
+
+def mpi_add_all_sums(sums_list):
+    if isinstance(sums_list,list):
+        sums = sums_list[0].copy()
+
+        for tsums in sums_list[1:]:
+            for n in sums.dtype.names:
+                if n != 'file_id':
+                    sums[n] += tsums[n]
+    else:
+        sums = sums_list[0:1].copy()
+
+        for n in sums.dtype.names:
+            if n != 'file_id':
+                sums[n] = sums_list[n].sum(axis=0)
+
+    return sums
+
+def mpi_get_sums_dt():
+    dt=[
+        ('file_id','i8'),
+    ]
+    for type in ['noshear','1p','1m','2p','2m']:
+        n=util.Namer(back=type)
+        dt += [
+            (n('g'),'f8',2),
+            (n('gsq'),'f8',2),
+            (n('wsum'),'f8',2),
+            (n('wsq'),'f8',2),
+        ]
+    return dt
+
+def mpi_do_sums(fit_conf, data, select=None):
+
+    if 'max' in fit_conf:
+        model=fit_conf['max']['model']
+    else:
+        model=fit_conf['mof']['model']
+
+    n=util.Namer(front=model)
+
+    if select is not None:
+        s2n=data[n('s2n')]
+        f=data[n('flux')]
+        fe=data[n('flux_err')]
+        flux_s2n = np.sqrt( ( (f/fe)**2 ).sum(axis=1) )
+        Tratio=data[n('T_ratio')]
+
+        logic=eval(select)
+        w,=np.where(logic)
+        print('    kept %d/%d %g' % (w.size,data.size,float(w.size)/data.size))
+    else:
+        w=np.arange(data.size)
+
+    res={}
+    res['gsum'] = data[n('g')][w].sum(axis=0)
+    res['gsqsum'] = ( data[n('g')][w]**2 ).sum(axis=0)
+
+    wts = np.ones( (w.size,2), dtype='f8')
+    res['wsum'] = wts.sum(axis=0)
+    res['wsqsum'] = (wts**2).sum(axis=0)
+
+    return res
+
+def mpi_do_all_sums(fit_conf, fname, select=None):
+
+    file_id=int( os.path.basename(fname)[-11:].replace('.fits','') )
+
+    dt=mpi_get_sums_dt()
+    output=np.zeros(1, dtype=dt)
+    o1=output[0]
+    o1['file_id'] = file_id
+
+    print('processing:',fname)
+    with fitsio.FITS(fname) as fits:
+        for type in ['noshear','1p','1m','2p','2m']:
+
+            n=util.Namer(back=type)
+
+            data = fits[type][:]
+
+            res=mpi_do_sums(
+                fit_conf,
+                data,
+                select=select,
+            )
+
+            o1[n('g')]    = res['gsum']
+            o1[n('wsum')] = res['wsum']
+            o1[n('wsq')]  = res['wsqsum']
+            o1[n('gsq')]  = res['gsqsum']
+
+    return output
+
+def mpi_average_shear(sums, verbose=True):
+    dt=[
+        ('R','f8', 2),
+        ('shear','f8',2),
+        ('shear_err','f8',2),
+        ('shear_true','f8',2),
+    ]
+    output = eu.numpy_util.add_fields(sums, dt)
+    st=output[0]
+
+    g_mean = st['g']/st['wsum']
+    gsq_mean = st['gsq']/st['wsum']
+
+    g_err = np.sqrt( (gsq_mean - g_mean**2)/st['wsum'] )
+
+    g1p_mean = st['g_1p']/st['wsum_1p']
+    g1m_mean = st['g_1m']/st['wsum_1m']
+    g2p_mean = st['g_2p']/st['wsum_2p']
+    g2m_mean = st['g_2m']/st['wsum_2m']
+
+    st['R'][0] = (g1p_mean[0] - g1m_mean[0])/0.02
+    st['R'][1] = (g2p_mean[1] - g2m_mean[1])/0.02
+
+    st['shear'] = g_mean/st['R']
+    st['shear_err'] = g_err/st['R']
+
+    if verbose:
+        print('num:',int(st['wsum'][0]))
+        print('R:',st['R'])
+        sm='shear: %.6f +/- %.6f %.6f +/- %.6f'
+        print(sm % (st['shear'][0],st['shear_err'][0],
+                    st['shear'][1],st['shear_err'][1]))
+    return output
 
 

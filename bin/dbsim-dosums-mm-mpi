@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-mpirun -n 8 dbsim-dosums-mm-api
+mpirun -n 8 dbsim-dosums-mm-mpi run
 """
 
 import os
@@ -23,83 +23,6 @@ parser.add_argument('--nsigma',default=3.0,type=float,
                     help='number sigma error bars to print')
 
 
-def add_all_sums(sums_list):
-    sums = sums_list[0].copy()
-
-    for tsums in sums_list[1:]:
-        for n in sums.dtype.names:
-            sums[n] += tsums[n]
-
-    return sums
-
-def get_sums_dt():
-    dt=[]
-    for type in ['noshear','1p','1m','2p','2m']:
-        n=dbsim.util.Namer(back=type)
-        dt += [
-            (n('g'),'f8',2),
-            (n('gsq'),'f8',2),
-            (n('wsum'),'f8',2),
-            (n('wsq'),'f8',2),
-        ]
-    return dt
-
-def do_sums(fit_conf, data, select=None):
-
-    model=fit_conf['max']['model']
-
-    n=dbsim.util.Namer(front=model)
-
-    if select is not None:
-        s2n=data[n('s2n')]
-        f=data[n('flux')]
-        fe=data[n('flux_err')]
-        flux_s2n = np.sqrt( ( (f/fe)**2 ).sum(axis=1) )
-        Tratio=data[n('T_ratio')]
-
-        logic=eval(select)
-        w,=np.where(logic)
-        print('    kept %d/%d %g' % (w.size,data.size,float(w.size)/data.size))
-    else:
-        w=np.arange(data.size)
-
-    res={}
-    res['gsum'] = data[n('g')][w].sum(axis=0)
-    res['gsqsum'] = ( data[n('g')][w]**2 ).sum(axis=0)
-
-    wts = np.ones( (w.size,2), dtype='f8')
-    res['wsum'] = wts.sum(axis=0)
-    res['wsqsum'] = (wts**2).sum(axis=0)
-
-    return res
-
-def do_all_sums(fit_conf, fname, select=None):
-
-    dt=get_sums_dt()
-    output=np.zeros(1, dtype=dt)
-    o1=output[0]
-
-    print('processing:',fname)
-    with fitsio.FITS(fname) as fits:
-        for type in ['noshear','1p','1m','2p','2m']:
-
-            n=dbsim.util.Namer(back=type)
-
-            data = fits[type][:]
-
-            res=do_sums(
-                fit_conf,
-                data,
-                select=select,
-            )
-
-            o1[n('g')]    = res['gsum']
-            o1[n('wsum')] = res['wsum']
-            o1[n('wsq')]  = res['wsqsum']
-            o1[n('gsq')]  = res['gsqsum']
-
-    return output
-
 def main():
     args=parser.parse_args()
 
@@ -113,7 +36,11 @@ def main():
         select = None
 
     def dorun(fname):
-        return do_all_sums(fit_conf, fname, select=select)
+        return dbsim.averaging.mpi_do_all_sums(
+            fit_conf, 
+            fname, 
+            select=select,
+        )
 
     if navy.rank == navy.ADMIRAL:
 
@@ -126,12 +53,19 @@ def main():
         admiral = navy.Admiral(flist)
         admiral.orchestrate()
 
-        sums = add_all_sums(admiral.reports)
+        sums = dbsim.averaging.mpi_add_all_sums(admiral.reports)
+        sums['file_id'] = -9999
+
+        sums_not_none=[s for s in admiral.reports if s is not None]
+        allsums=eu.numpy_util.combine_arrlist(sums_not_none)
+        allsums = allsums[allsums['file_id'].argsort()]
 
         outfile=dbsim.files.get_sums_url(args.run, extra=args.select)
         eu.ostools.makedirs_fromfile(outfile)
         print("writing:",outfile)
-        fitsio.write(outfile, sums, clobber=True)
+        with fitsio.FITS(outfile,'rw',clobber=True) as fits:
+            fits.write(sums, extname='reduced')
+            fits.write(allsums, extname='allsums')
 
     else:
         ship = navy.Ship(dorun)

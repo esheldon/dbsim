@@ -303,7 +303,11 @@ class MakerBase(dict):
     def __init__(self, conf):
         self.update(conf)
 
-        seed=util.convert_run_to_seed(conf['run'])
+        if 'seed' in conf:
+            seed=conf['seed']
+        else:
+            seed=util.convert_run_to_seed(conf['run'])
+
         self.rng = np.random.RandomState(seed)
 
         self['sim_config'] = files.get_config_file(self['sim'])

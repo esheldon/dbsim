@@ -1,0 +1,156 @@
+#!/usr/bin/env python
+"""
+for jackknifing differences of runs that should match
+"""
+from __future__ import print_function
+
+import numpy as np
+import dbsim
+import fitsio
+import esutil as eu
+
+import argparse
+
+
+parser=argparse.ArgumentParser()
+
+parser.add_argument('run1', help='first run or runs config')
+parser.add_argument('run2', help='second run or runs config')
+parser.add_argument('--chunksize', type=int, default=10, help='chunksize for jackknife')
+
+parser.add_argument('--select',default=None,
+            help='read the selection from the indicated selection config')
+
+
+parser.add_argument('--nsigma',default=3.0,type=float,
+                    help='number sigma error bars to print')
+
+def subtract_sums(sums, tsums):
+    out=sums.copy()
+    for n in sums.dtype.names:
+        if n != 'file_id':
+            out[n] -= tsums[n]
+
+    return out
+
+def jackknife_diffshear(sums1, sums2, chunksize):
+    """
+    sums1 and sums2 must match up
+    """
+    nchunks = sums1.size//chunksize
+
+    rsums1 = dbsim.averaging.mpi_add_all_sums(sums1)
+    rsums2 = dbsim.averaging.mpi_add_all_sums(sums2)
+
+    st1 = dbsim.averaging.mpi_average_shear(rsums1)
+    st2 = dbsim.averaging.mpi_average_shear(rsums2)
+
+    shear_diffs = np.zeros( (nchunks, 2) )
+
+    for i in range(nchunks):
+
+        beg = i*chunksize
+        end = (i+1)*chunksize
+
+        sub_sums1 = sums1[beg:end]
+        sub_sums2 = sums2[beg:end]
+
+        rsub_sums1 = dbsim.averaging.mpi_add_all_sums(sub_sums1)
+        rsub_sums2 = dbsim.averaging.mpi_add_all_sums(sub_sums2)
+
+        tsums1 = subtract_sums(rsums1, rsub_sums1)
+        tsums2 = subtract_sums(rsums2, rsub_sums2)
+
+        tst1 = dbsim.averaging.mpi_average_shear(tsums1,verbose=False)
+        tst2 = dbsim.averaging.mpi_average_shear(tsums2,verbose=False)
+        sdiff = tst1['shear'] - tst2['shear']
+
+        shear_diffs[i, :] = sdiff
+
+    shear_diff = st1['shear'][0] - st2['shear'][0]
+
+    shear_diff_cov = np.zeros( (2,2) )
+    fac = (nchunks-1)/float(nchunks)
+
+    shear_diff_cov[0,0] = fac*( ((shear_diff[0]-shear_diffs[:,0])**2).sum() )
+    shear_diff_cov[0,1] = fac*( ((shear_diff[0]-shear_diffs[:,0]) * (shear_diff[1]-shear_diffs[:,1])).sum() )
+    shear_diff_cov[1,0] = shear_diff_cov[0,1]
+    shear_diff_cov[1,1] = fac*( ((shear_diff[1]-shear_diffs[:,1])**2).sum() )
+
+    out={
+        'shear_diff':shear_diff,
+        'shear_diff_cov':shear_diff_cov,
+        'shear_diff_err':np.sqrt(np.diag(shear_diff_cov)),
+    }
+
+    return out
+
+def get_configs(run):
+    runc = dbsim.files.read_config_file(run)
+    simc = dbsim.files.read_config_file(runc['sim'])
+    fitc = dbsim.files.read_config_file(runc['fit'])
+
+    return runc, simc, fitc
+
+
+def read_and_match(args, run1, run2):
+    runc1, simc1, fitc1 = get_configs(run1)
+    runc2, simc2, fitc2 = get_configs(run2)
+
+    sums_file1=dbsim.files.get_sums_url(run1, extra=args.select)
+    sums_file2=dbsim.files.get_sums_url(run2, extra=args.select)
+
+    print('reading:',sums_file1)
+    sums1 = fitsio.read(sums_file1, ext='allsums')
+    print('reading:',sums_file2)
+    sums2 = fitsio.read(sums_file2, ext='allsums')
+
+    m1,m2 = eu.numpy_util.match(sums1['file_id'], sums2['file_id'])
+    print('    matched %d/%d' % (m1.size, m2.size))
+
+    sums1 = sums1[m1]
+    sums2 = sums2[m2]
+
+    step=simc1['shear'][0] - simc2['shear'][0]
+    return sums1, sums2, step
+
+def read_and_match_all(args, runs1, runs2):
+    assert len(runs1)==len(runs2),'runs must match up'
+
+    dlist1=[]
+    dlist2=[]
+    for run1,run2 in zip(runs1, runs2):
+        tsums1, tsums2, step = read_and_match(args, run1, run2)
+        dlist1.append(tsums1)
+        dlist2.append(tsums2)
+
+    sums1 = eu.numpy_util.combine_arrlist(dlist1)
+    sums2 = eu.numpy_util.combine_arrlist(dlist2)
+
+    return sums1, sums2, step
+
+def get_runlist(run):
+    if 'runs' in run:
+        data=dbsim.files.read_config_file(run)
+        runs=data['runs']
+    else:
+        runs=[run]
+
+    return runs
+
+def main():
+    args = parser.parse_args()
+    runs1 = get_runlist(args.run1)
+    runs2 = get_runlist(args.run2)
+
+    sums1, sums2, step = read_and_match_all(args, runs1, runs2)
+
+    res=jackknife_diffshear(sums1, sums2, args.chunksize)
+
+    m = 1.0 - res['shear_diff'][0]/step
+    merr = res['shear_diff_err'][0]/step
+
+    print("errors are %d sigma" % args.nsigma)
+    print("m: %.8e +/- %.8e" % (m,args.nsigma*merr))
+
+main()

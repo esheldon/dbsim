@@ -151,8 +151,11 @@ def do_meta_detect(sim, fit_conf, fitter, show=False):
     if metacal_pars.get('symmetrize_psf',False):
         fitters._fit_all_psfs([sim.obs], fit_conf['mof']['psf'])
 
+    # Note using the simulation rng here not the fitting
+    # rng
     odict=ngmix.metacal.get_all_metacal(
         sim.obs,
+        rng=sim.rng,
         **metacal_pars
     )
 
