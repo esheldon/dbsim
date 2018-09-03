@@ -331,7 +331,13 @@ class CatalogSampler(dict):
         area_deg2=1.0 # square degree
         area_arcmin2=area_deg2*60.0**2
 
-        self['density_arcmin2']=nobj/area_arcmin2
+        if 'density_fac' in self:
+            density_fac = self['density_fac']
+            logger.debug('applying density factor: %s' % density_fac)
+        else:
+            density_fac = 1.0
+
+        self['density_arcmin2']=nobj/area_arcmin2 * density_fac
 
         logger.debug('density of catalog: %.1f per square '
                      'arcminute' % self['density_arcmin2'])

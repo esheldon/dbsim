@@ -36,7 +36,7 @@ def main():
         select = None
 
     def dorun(fname):
-        return dbsim.averaging.mpi_do_all_sums(
+        return dbsim.averaging.mpi_do_all_sums_ext(
             fit_conf, 
             fname, 
             select=select,

@@ -33,7 +33,7 @@ def subtract_sums(sums, tsums):
 
     return out
 
-def jackknife_diffshear(sums1, sums2, chunksize):
+def jackknife(sums1, sums2, chunksize):
     """
     sums1 and sums2 must match up
     """
@@ -46,6 +46,7 @@ def jackknife_diffshear(sums1, sums2, chunksize):
     st2 = dbsim.averaging.mpi_average_shear(rsums2)
 
     shear_diffs = np.zeros( (nchunks, 2) )
+    shear_means = np.zeros( (nchunks, 2) )
 
     for i in range(nchunks):
 
@@ -64,12 +65,16 @@ def jackknife_diffshear(sums1, sums2, chunksize):
         tst1 = dbsim.averaging.mpi_average_shear(tsums1,verbose=False)
         tst2 = dbsim.averaging.mpi_average_shear(tsums2,verbose=False)
         sdiff = tst1['shear'] - tst2['shear']
+        smean = 0.5*(tst1['shear'] + tst2['shear'])
 
         shear_diffs[i, :] = sdiff
+        shear_means[i, :] = smean
 
     shear_diff = st1['shear'][0] - st2['shear'][0]
+    shear_mean = 0.5*(st1['shear'][0] + st2['shear'][0])
 
     shear_diff_cov = np.zeros( (2,2) )
+    shear_mean_cov = np.zeros( (2,2) )
     fac = (nchunks-1)/float(nchunks)
 
     shear_diff_cov[0,0] = fac*( ((shear_diff[0]-shear_diffs[:,0])**2).sum() )
@@ -77,10 +82,21 @@ def jackknife_diffshear(sums1, sums2, chunksize):
     shear_diff_cov[1,0] = shear_diff_cov[0,1]
     shear_diff_cov[1,1] = fac*( ((shear_diff[1]-shear_diffs[:,1])**2).sum() )
 
+    shear_mean_cov[0,0] = fac*( ((shear_mean[0]-shear_means[:,0])**2).sum() )
+    shear_mean_cov[0,1] = fac*( ((shear_mean[0]-shear_means[:,0]) * (shear_mean[1]-shear_means[:,1])).sum() )
+    shear_mean_cov[1,0] = shear_mean_cov[0,1]
+    shear_mean_cov[1,1] = fac*( ((shear_mean[1]-shear_means[:,1])**2).sum() )
+
+
     out={
         'shear_diff':shear_diff,
         'shear_diff_cov':shear_diff_cov,
         'shear_diff_err':np.sqrt(np.diag(shear_diff_cov)),
+
+        'shear_mean':shear_mean,
+        'shear_mean_cov':shear_mean_cov,
+        'shear_mean_err':np.sqrt(np.diag(shear_mean_cov)),
+
     }
 
     return out
@@ -145,11 +161,22 @@ def main():
 
     sums1, sums2, step = read_and_match_all(args, runs1, runs2)
 
-    res=jackknife_diffshear(sums1, sums2, args.chunksize)
+    res=jackknife(sums1, sums2, args.chunksize)
 
-    m = 1.0 - res['shear_diff'][0]/step
+    m = res['shear_diff'][0]/step-1
     merr = res['shear_diff_err'][0]/step
 
+    mn=res['shear_mean']
+    mnerr=res['shear_mean_err']
+
+    print('mean')
+    print('-'*70)
+    print("errors are %d sigma" % args.nsigma)
+    print("%.8e +/- %.8e %.8e +/- %.8e" % (mn[0],args.nsigma*mnerr[0],mn[1],args.nsigma*mnerr[1]))
+
+
+    print('diff')
+    print('-'*70)
     print("errors are %d sigma" % args.nsigma)
     print("m: %.8e +/- %.8e" % (m,args.nsigma*merr))
 

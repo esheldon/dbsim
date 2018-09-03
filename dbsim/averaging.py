@@ -241,7 +241,10 @@ class Summer(dict):
         get sums for a single file
         """
 
+        file_id=int( os.path.basename(fname)[-11:].replace('.fits','') )
+
         sums=self.get_sums_struct()
+        sums['file_id'] = file_id
 
         print("processing:",fname)
         data=fitsio.read(fname) 
@@ -267,6 +270,7 @@ class Summer(dict):
         data=self._preselect(data)
 
         sums=self.do_sums1(data)
+        sums['file_id'] = file_id
 
         return sums
 
@@ -704,6 +708,7 @@ class Summer(dict):
 
     def _get_sums_dt(self):
         dt=[
+            ('file_id','i8'),
             ('wsum','f8'),
             ('g','f8',2),
             ('gsq','f8',2),
@@ -1184,7 +1189,7 @@ def mpi_get_sums_dt():
         ]
     return dt
 
-def mpi_do_sums(fit_conf, data, select=None):
+def mpi_do_sums_ext(fit_conf, data, select=None):
 
     if 'max' in fit_conf:
         model=fit_conf['max']['model']
@@ -1216,7 +1221,37 @@ def mpi_do_sums(fit_conf, data, select=None):
 
     return res
 
-def mpi_do_all_sums(fit_conf, fname, select=None):
+def mpi_do_sums(data, type, select=None):
+
+    model='mcal'
+
+    n=util.Namer(front=model, back=type)
+
+    if select is not None:
+        s2n=data[n('s2n')]
+        f=data[n('flux')]
+        fe=data[n('flux_err')]
+        flux_s2n = np.sqrt( ( (f/fe)**2 ).sum(axis=1) )
+        Tratio=data[n('T_ratio')]
+
+        logic=eval(select)
+        w,=np.where(logic)
+        print('    kept %d/%d %g' % (w.size,data.size,float(w.size)/data.size))
+    else:
+        w=np.arange(data.size)
+
+    res={}
+    res['gsum'] = data[n('g')][w].sum(axis=0)
+    res['gsqsum'] = ( data[n('g')][w]**2 ).sum(axis=0)
+
+    wts = np.ones( (w.size,2), dtype='f8')
+    res['wsum'] = wts.sum(axis=0)
+    res['wsqsum'] = (wts**2).sum(axis=0)
+
+    return res
+
+
+def mpi_do_all_sums_ext(fit_conf, fname, select=None):
 
     file_id=int( os.path.basename(fname)[-11:].replace('.fits','') )
 
@@ -1233,7 +1268,7 @@ def mpi_do_all_sums(fit_conf, fname, select=None):
 
             data = fits[type][:]
 
-            res=mpi_do_sums(
+            res=mpi_do_sums_ext(
                 fit_conf,
                 data,
                 select=select,
@@ -1245,6 +1280,35 @@ def mpi_do_all_sums(fit_conf, fname, select=None):
             o1[n('gsq')]  = res['gsqsum']
 
     return output
+
+def mpi_do_all_sums(fname, select=None):
+
+    file_id=int( os.path.basename(fname)[-11:].replace('.fits','') )
+
+    dt=mpi_get_sums_dt()
+    output=np.zeros(1, dtype=dt)
+    o1=output[0]
+    o1['file_id'] = file_id
+
+    print('processing:',fname)
+    data=fitsio.read(fname)
+    for type in ['noshear','1p','1m','2p','2m']:
+
+        n=util.Namer(back=type)
+
+        res=mpi_do_sums(
+            data,
+            type,
+            select=select,
+        )
+
+        o1[n('g')]    = res['gsum']
+        o1[n('wsum')] = res['wsum']
+        o1[n('wsq')]  = res['wsqsum']
+        o1[n('gsq')]  = res['gsqsum']
+
+    return output
+
 
 def mpi_average_shear(sums, verbose=True):
     dt=[

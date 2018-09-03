@@ -5,6 +5,7 @@ mpirun -n 8 dbsim-dosums-mpi
 
 import os
 from glob import glob
+import fitsio
 import esutil as eu
 import dbsim
 import navy
@@ -30,12 +31,15 @@ parser.add_argument('--ntest',default=None,type=int,
 parser.add_argument('--match',action='store_true',
                     help='match to the truth catalog')
 
+parser.add_argument('--total-deriv',action='store_true',
+                    help='use total derivative')
+
 def add_all_sums(sums_list):
     sums = sums_list[0].copy()
 
     for tsums in sums_list[1:]:
         for n in sums.dtype.names:
-            if n in ['shear_true']:
+            if n in ['shear_true','file_id']:
                 continue
             else:
                 sums[n] += tsums[n]
@@ -45,9 +49,21 @@ def add_all_sums(sums_list):
 def main():
     args=parser.parse_args()
 
+    if args.select is not None:
+        d = dbsim.files.read_config_file('select-'+args.select)
+        select = d['select'].strip()
+    else:
+        select = None
+
     def dorun(fname):
-        summer=dbsim.averaging.Summer(args)
-        return summer.do_file_sums(fname)
+        if args.total_deriv:
+            return dbsim.averaging.mpi_do_all_sums(
+                fname,
+                select=select,
+            )
+        else:
+            summer=dbsim.averaging.Summer(args)
+            return summer.do_file_sums(fname)
 
     if navy.rank == navy.ADMIRAL:
 
@@ -55,15 +71,27 @@ def main():
         pattern=os.path.join(dir, '*.fits')
         flist=glob(pattern)
         flist.sort()
-        #flist=flist[0:12]
 
         admiral = navy.Admiral(flist)
         admiral.orchestrate()
 
         sums = add_all_sums(admiral.reports)
+        sums['file_id'] = -9999
 
-        summer=dbsim.averaging.Summer(args)
-        summer.write_sums(args.runs, sums)
+        sums_not_none=[s for s in admiral.reports if s is not None]
+        allsums = eu.numpy_util.combine_arrlist(sums_not_none)
+        allsums = allsums[allsums['file_id'].argsort()]
+
+        #summer=dbsim.averaging.Summer(args)
+        #summer.write_sums(args.runs, sums)
+
+        outfile=dbsim.files.get_sums_url(args.runs, extra=args.select)
+        eu.ostools.makedirs_fromfile(outfile)
+        print("writing:",outfile)
+        with fitsio.FITS(outfile,'rw',clobber=True) as fits:
+            fits.write(sums, extname='reduced')
+            fits.write(allsums, extname='allsums')
+
 
     else:
         ship = navy.Ship(dorun)
