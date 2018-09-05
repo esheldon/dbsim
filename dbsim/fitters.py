@@ -276,24 +276,37 @@ class MetacalFitter(FitterBase):
         return self._do_all_metacal(mbobs_list, data=mof_data)
 
     def _show_corrected_obs(self, mbobs_list, corrected_mbobs_list):
-        for i,mbobs in enumerate(corrected_mbobs_list):
-            import images
-            bim0=mbobs_list[i][0][0].image.transpose()
-            gim0=mbobs_list[i][1][0].image.transpose()
-            rim0=mbobs_list[i][2][0].image.transpose()
-            bim=mbobs[0][0].image.transpose()
-            gim=mbobs[1][0].image.transpose()
-            rim=mbobs[2][0].image.transpose()
-            mval=max(bim.max(), gim.max(), rim.max())
-            rgb0=images.get_color_image(rim0/mval, gim0/mval, bim0/mval, nonlinear=0.1)
-            rgb=images.get_color_image(rim/mval, gim/mval, bim/mval, nonlinear=0.1)
-            #images.view(mbobs[0][0].image,title='%d' % i)
-            imlist=[
-                rgb0/rgb0.max(), rgb/rgb.max(),
-                mbobs_list[i][0][0].weight, mbobs[0][0].weight,
-            ]
-            titles=['orig','corrected','weight orig','weight corr']
-            images.view_mosaic(imlist, titles=titles)
+        import images
+
+        if len(mbobs_list[0])==3:
+            for i,mbobs in enumerate(corrected_mbobs_list):
+                bim0=mbobs_list[i][0][0].image.transpose()
+                gim0=mbobs_list[i][1][0].image.transpose()
+                rim0=mbobs_list[i][2][0].image.transpose()
+                bim=mbobs[0][0].image.transpose()
+                gim=mbobs[1][0].image.transpose()
+                rim=mbobs[2][0].image.transpose()
+                mval=max(bim.max(), gim.max(), rim.max())
+                rgb0=images.get_color_image(rim0/mval, gim0/mval, bim0/mval, nonlinear=0.1)
+                rgb=images.get_color_image(rim/mval, gim/mval, bim/mval, nonlinear=0.1)
+                #images.view(mbobs[0][0].image,title='%d' % i)
+                imlist=[
+                    rgb0/rgb0.max(), rgb/rgb.max(),
+                    mbobs_list[i][0][0].weight, mbobs[0][0].weight,
+                ]
+                titles=['orig','corrected','weight orig','weight corr']
+                images.view_mosaic(imlist, titles=titles)
+        else:
+            for i,mbobs in enumerate(corrected_mbobs_list):
+                im0=mbobs_list[i][0][0].image
+                im=mbobs[0][0].image
+                #images.view(mbobs[0][0].image,title='%d' % i)
+                imlist=[
+                    im0, im, 
+                    mbobs_list[i][0][0].weight, mbobs[0][0].weight,
+                ]
+                titles=['orig','corrected','weight orig','weight corr']
+                images.view_mosaic(imlist, titles=titles)
 
         if 'q'==input('hit a key (q to quit): '):
             stop
