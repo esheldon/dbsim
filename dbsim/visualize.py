@@ -39,8 +39,13 @@ def make_rgb(mbobs):
 def view_mbobs(mbobs, **kw):
     import images
 
-    rgb=make_rgb(mbobs)
-    plt=images.view(rgb, **kw)
+    if len(mbobs)==3:
+        rgb=make_rgb(mbobs)
+        plt=images.view(rgb, **kw)
+    else:
+        # just show the first one
+        plt = images.view(mbobs[0][0].image, **kw)
+
     return plt
 
 

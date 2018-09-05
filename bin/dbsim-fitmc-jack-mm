@@ -173,11 +173,13 @@ def main():
     print('-'*70)
     print("errors are %d sigma" % args.nsigma)
     print("%.8e +/- %.8e %.8e +/- %.8e" % (mn[0],args.nsigma*mnerr[0],mn[1],args.nsigma*mnerr[1]))
+    print("corr:\n",eu.stat.cov2cor(res['shear_mean_cov']))
 
 
     print('diff')
     print('-'*70)
     print("errors are %d sigma" % args.nsigma)
     print("m: %.8e +/- %.8e" % (m,args.nsigma*merr))
+    print("corr:\n",eu.stat.cov2cor(res['shear_diff_cov']))
 
 main()

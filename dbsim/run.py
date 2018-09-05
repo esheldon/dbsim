@@ -43,6 +43,8 @@ def go(sim_conf,
             pos_sampler,
             rng,
         )
+    elif sim_conf['sim_type']=='pair':
+        sim=simulation.PairSim(sim_conf, rng)
     else:
         sim=simulation.Sim(sim_conf, rng)
 

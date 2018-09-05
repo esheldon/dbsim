@@ -457,11 +457,14 @@ class Sim(dict):
     def _set_bands(self):
         nband=self.get('nband',None)
 
+        if 'disk' not in self['pdfs']:
+            self['pdfs']['disk'] = {}
+
         cdisk=self['pdfs']['disk']
         cbulge=self['pdfs'].get('bulge',None)
         cknots=self['pdfs'].get('knots',None)
 
-        if nband is None:
+        if nband is None or nband==1:
             self['nband']=1
             cdisk['color']=[1.0]
             if cbulge is not None:
@@ -522,6 +525,8 @@ class Sim(dict):
                 [-half, half],
                 rng=self.rng,
             )
+        else:
+            raise ValueError("positions should be type 'cluster' or 'uniform'")
 
         self.position_pdf=pdf
 
@@ -777,3 +782,69 @@ class Sim(dict):
             mbobs.append(olist)
 
         self.obs=mbobs
+
+class PairSim(Sim):
+
+    def _get_nobj(self):
+        return 2
+
+    def _set_objects(self):
+
+        nobj = self._get_nobj()
+
+        self._obj_data=np.zeros(
+            nobj,
+            dtype=[
+                ('image_id','i4'),
+                ('x','f8'),
+                ('y','f8')
+            ],
+        )
+
+        # these are dicts
+        cen_obj = self._get_object()
+        nbr_obj = self._get_object()
+
+        # this is in addition to the sub-pixel offset
+        # already present
+        dx, dy = self._get_nbr_position()
+        nbr_obj['cen'][1] += dx
+        nbr_obj['cen'][0] += dy
+
+        self.objlist = [
+            cen_obj,
+            nbr_obj,
+        ]
+
+    def _get_nbr_position(self):
+        """
+        place on a ring
+        """
+        posconf = self['positions']
+        assert posconf['type']=='ring',('only center with nbr in ring '
+                                        'supported for PairSim')
+
+        if 'radius_pixels' in posconf:
+            radarc = posconf['radius_pixels']*self['pixel_scale']
+        elif 'radius_arcsec' in posconf:
+            radarc = posconf['radius_arcsec']
+        else:
+            raise ValueError('radius_pixels or radius_arcsec should be '
+                             'present in positions config')
+
+        theta = self.rng.uniform(low=0, high=2*np.pi)
+
+        dx = np.cos(theta)*radarc
+        dy = np.sin(theta)*radarc
+        return dx, dy
+
+    def _set_position_pdf(self):
+        """
+        just pixel offsets; we do the ring offset elsewhere
+        """
+        half=self['pixel_scale']/2.0
+        self.position_pdf=pdfs.Flat2D(
+            [-half, half],
+            [-half, half],
+            rng=self.rng,
+        )
