@@ -53,6 +53,10 @@ def view_mbobs_list(mbobs_list, **kw):
     import images
     import plotting
 
-    imlist=[make_rgb(mbobs) for mbobs in mbobs_list]
+    if len(mbobs_list[0])==3:
+        imlist=[make_rgb(mbobs) for mbobs in mbobs_list]
+    else:
+        imlist=[mbobs[0][0].image for mbobs in mbobs_list]
+
     plt=images.view_mosaic(imlist, **kw)
     return plt
