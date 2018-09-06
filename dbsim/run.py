@@ -280,7 +280,7 @@ def do_fits(sim,
         else:
 
             if show:
-                visualize.view_mbobs_list(mbobs_list)
+                visualize.view_mbobs_list(mbobs_list,weight=True)
                 if 'q'==input('hit a key (q to quit): '):
                     stop
 
