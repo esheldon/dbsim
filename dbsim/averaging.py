@@ -313,6 +313,16 @@ class Summer(dict):
             print("kept %d/%d in preselect" % (w.size, data.size))
             data=data[w]
  
+        """
+        R11 = (data['mcal_g_1p'][:,0] - data['mcal_g_1m'][:,0])/0.02
+        R22 = (data['mcal_g_2p'][:,1] - data['mcal_g_2m'][:,1])/0.02
+        w,=where(
+            between(R11, -5, 6)
+            & 
+            between(R22, -5, 6)
+        )
+        data = data[w]
+        """
         return data
 
 

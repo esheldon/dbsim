@@ -246,6 +246,8 @@ class MetacalFitter(FitterBase):
         super(MetacalFitter,self).__init__(*args, **kw)
 
         self.metacal_prior = self._get_prior(self['metacal'])
+        self['metacal']['symmetrize_weight'] = \
+            self['metacal'].get('symmetrize_weight',False)
 
 
     def go(self, mbobs_list_input):
@@ -273,7 +275,35 @@ class MetacalFitter(FitterBase):
             mbobs_list = mbobs_list_input
             mof_data=None
 
+        if self['metacal']['symmetrize_weight']:
+            self._symmetrize_weights(mbobs_list)
+
         return self._do_all_metacal(mbobs_list, data=mof_data)
+
+    def _symmetrize_weights(self, mbobs_list):
+        for mbobs in mbobs_list:
+            for obslist in mbobs:
+                for obs in obslist:
+                    self._symmetrize_weight(obs.weight)
+
+        if False:
+            from . import visualize
+            visualize.view_mbobs_list(mbobs_list,title='symmetrized',weight=True)
+            if 'q'==input('hit a key (q to quit): '):
+                stop
+
+    def _symmetrize_weight(self, wt):
+        """
+        symmetrize raw weight pixels in all of the maps
+        """
+        assert wt.shape[0] == wt.shape[1]
+
+        for k in (1,2,3):
+            wt_rot = np.rot90(wt, k=k)
+            wzero  = np.where(wt_rot == 0.0)
+
+            if wzero[0].size > 0:
+                wt[wzero] = 0.0
 
     def _show_corrected_obs(self, mbobs_list, corrected_mbobs_list):
         import images
