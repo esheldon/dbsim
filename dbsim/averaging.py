@@ -247,7 +247,12 @@ class Summer(dict):
         sums['file_id'] = file_id
 
         print("processing:",fname)
-        data=fitsio.read(fname) 
+        try:
+            data=fitsio.read(fname) 
+        except (OSError, IOError) as err:
+            print(str(err))
+            print('returning None')
+            return None
 
         # match to truth. might not have any matches, in
         # which case we return early with zeros in the sums

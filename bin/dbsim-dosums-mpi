@@ -75,10 +75,11 @@ def main():
         admiral = navy.Admiral(flist)
         admiral.orchestrate()
 
-        sums = add_all_sums(admiral.reports)
+        sums_not_none=[s for s in admiral.reports if s is not None]
+
+        sums = add_all_sums(sums_not_none)
         sums['file_id'] = -9999
 
-        sums_not_none=[s for s in admiral.reports if s is not None]
         allsums = eu.numpy_util.combine_arrlist(sums_not_none)
         allsums = allsums[allsums['file_id'].argsort()]
 
