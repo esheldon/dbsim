@@ -38,6 +38,9 @@ class FitterBase(dict):
         import ngmix
         from ngmix.joint_prior import PriorSimpleSep, PriorBDFSep
 
+        if 'priors' not in conf:
+            return None
+
         ppars=conf['priors']
 
         # g
@@ -232,7 +235,7 @@ class MOFFitter(FitterBase):
                     t[nname] = val
 
         return output
-            
+
 class MetacalFitter(FitterBase):
     """
     run metacal on all objects found in the image, using
@@ -531,6 +534,32 @@ class MetacalFitter(FitterBase):
             mbobs,
             verbose=False,
         )
+
+class AdmomMetacalFitter(MetacalFitter):
+    #def __init__(self, *args, **kw):
+    #    super(AdmomMetacalFitter,self).__init__(*args, **kw)
+        
+    def _do_one_metacal(self, mbobs):
+        conf=self['metacal']
+
+        boot=self._get_bootstrapper(mbobs)
+
+        psf_Tguess=4.0*mbobs[0][0].jacobian.get_scale()**2
+
+        boot.fit_metacal(
+            psf_Tguess=psf_Tguess,
+        )
+        return boot
+
+    def _get_bootstrapper(self, mbobs):
+        from ngmix.bootstrap import AdmomMetacalBootstrapper
+
+        return AdmomMetacalBootstrapper(
+            mbobs,
+            admom_pars=self['metacal'].get('admom_pars',None),
+            metacal_pars=self['metacal']['metacal_pars'],
+        )
+
 
 class MaxFitter(FitterBase):
     """
