@@ -360,7 +360,8 @@ class MetacalFitter(FitterBase):
                 try:
                     boot=self._do_one_metacal(mbobs)
                     res=boot.get_metacal_result()
-                except (BootPSFFailure, BootGalFailure):
+                except (BootPSFFailure, BootGalFailure) as err:
+                    logger.debug(str(err))
                     res={'mcal_flags':1}
                 except RuntimeError as err:
                     # argh galsim and its generic errors

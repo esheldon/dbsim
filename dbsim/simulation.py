@@ -37,6 +37,7 @@ class Sim(dict):
         if 'knots' in self['pdfs']:
             self._make_knots_pdfs()
 
+        self['coadd'] = self.get('coadd',False)
         self._set_position_pdf()
 
     def make_obs(self):
@@ -50,6 +51,9 @@ class Sim(dict):
         if 'background' in self:
             if self['background']['measure']:
                 self._subtract_backgrounds()
+
+        if self['coadd']:
+            self._do_coadd()
 
         self._make_obs()
 
@@ -759,6 +763,24 @@ class Sim(dict):
             **metacal_pars
         )
 
+    def _do_coadd(self):
+        """
+        coadd all images. currently psf is same in all so
+        no need to coadd it
+        """
+        assert len(self.imlist) > 1,"can't coadd one image"
+
+        nim = len(self.imlist)
+        self['coadd_noise_sigma'] = self['noise_sigma']*np.sqrt(nim)
+
+        logger.debug('    doing coadd')
+        im = self.imlist[0]
+
+        for tim in self.imlist[1:]:
+            im += tim
+
+        self.imlist = [im]
+
     def _make_obs(self):
 
         mbobs=ngmix.MultiBandObsList()
@@ -770,7 +792,11 @@ class Sim(dict):
                 scale=self['pixel_scale']
             )
 
-            wt=np.zeros(im.shape) + 1.0/self['noise_sigma']**2
+            if self['coadd']:
+                wt=np.zeros(im.shape) + 1.0/self['coadd_noise_sigma']**2
+            else:
+                wt=np.zeros(im.shape) + 1.0/self['noise_sigma']**2
+
             obs = ngmix.Observation(
                 im,
                 weight=wt,
