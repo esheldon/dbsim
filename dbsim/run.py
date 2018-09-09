@@ -409,13 +409,17 @@ def get_fitter(sim_conf, fit_conf, fitrng):
             mof_fitter=mof_fitter,
         )
 
-    elif fit_conf['fitter']=='metacal-am':
+    elif fit_conf['fitter'] in ['metacal-am','metacal-am-avg']:
         if fit_conf['fofs']['find_fofs']:
             mof_fitter = MOFFitter(fit_conf, nband, fitrng)
         else:
             mof_fitter=None
 
-        fitter=fitters.AdmomMetacalFitter(
+        if fit_conf['fitter']=='metacal-am-avg':
+            cls=fitters.AdmomMetacalAvgFitter
+        else:
+            cls=fitters.AdmomMetacalFitter
+        fitter=cls(
             fit_conf,
             nband,
             fitrng,
