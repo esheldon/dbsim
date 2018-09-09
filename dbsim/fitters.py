@@ -542,6 +542,62 @@ class MetacalFitter(FitterBase):
             verbose=False,
         )
 
+class MetacalAvgFitter(MetacalFitter):
+    def _do_one_metacal(self, mbobs):
+        nrand = self['metacal']['nrand']
+
+        reslist=[]
+        first=True
+        for i in range(nrand):
+            try:
+                tboot=super(MetacalAvgFitter,self)._do_one_metacal(mbobs)
+
+                res=tboot.get_metacal_result()
+                reslist.append(res)
+                if first:
+                    boot=tboot
+                    first=False
+
+            except (BootPSFFailure, BootGalFailure) as err:
+                logger.debug(str(err))
+                res={'mcal_flags':1}
+            except RuntimeError as err:
+                # argh galsim and its generic errors
+                logger.info('caught RuntimeError: %s' % str(err))
+                res={'mcal_flags':1}
+
+        if len(reslist)==0:
+            raise BootGalFailure('none of the metacal fits worked')
+
+        # this is the first, corresponds to the result in the
+        # boot variable
+
+        types=self['metacal']['metacal_pars']['types']
+        dontavg=[
+            'flags','nfev','ier','errmsg','model',
+            'npix','lnprob','chi2per','dof','ntry',
+        ]
+        res=reslist[0]
+        nkept = len(reslist)
+        if nkept > 1:
+            for tres in reslist[1:]:
+                for type in types:
+                    typeres=res[type]
+                    ttyperes=tres[type]
+                    for key in typeres:
+                        if key not in dontavg:
+                            #print('    key:',key)
+                            typeres[key] += ttyperes[key]
+
+            fac = 1.0/nkept
+            for type in types:
+                typeres=res[type]
+                for key in typeres:
+                    if key not in dontavg:
+                        typeres[key] *= fac
+            
+        return boot
+
 class AdmomMetacalFitter(MetacalFitter):
     #def __init__(self, *args, **kw):
     #    super(AdmomMetacalFitter,self).__init__(*args, **kw)
