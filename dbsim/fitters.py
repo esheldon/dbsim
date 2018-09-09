@@ -176,8 +176,14 @@ class MOFFitter(FitterBase):
             fitter=None
             data=None
         else:
-            reslist=fitter.get_result_list()
-            data=self._get_output(reslist, fitter.nband)
+            average_fof_shapes = self.get('average_fof_shapes',False)
+            if average_fof_shapes:
+                logger.debug('averaging fof shapes')
+                resavg=fitter.get_result_averaged_shapes()
+                data=self._get_output([resavg], fitter.nband)
+            else:
+                reslist=fitter.get_result_list()
+                data=self._get_output(reslist, fitter.nband)
 
         if get_fitter:
             return fitter, data

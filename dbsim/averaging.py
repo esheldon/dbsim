@@ -309,20 +309,15 @@ class Summer(dict):
         """
         
         if self.args.preselect:
-            w,=where(data['s2n_true'] > 5)
-            print("kept %d/%d in preselect" % (w.size, data.size))
-            data=data[w]
- 
-        """
-        R11 = (data['mcal_g_1p'][:,0] - data['mcal_g_1m'][:,0])/0.02
-        R22 = (data['mcal_g_2p'][:,1] - data['mcal_g_2m'][:,1])/0.02
-        w,=where(
-            between(R11, -5, 6)
-            & 
-            between(R22, -5, 6)
-        )
-        data = data[w]
-        """
+            print('pre-selecting')
+            R11 = (data['mcal_g_1p'][:,0] - data['mcal_g_1m'][:,0])/0.02
+            R22 = (data['mcal_g_2p'][:,1] - data['mcal_g_2m'][:,1])/0.02
+            w,=where(
+                between(R11, -7, 9)
+                & 
+                between(R22, -7, 9)
+            )
+            data = data[w]
         return data
 
 
@@ -636,7 +631,10 @@ class Summer(dict):
     def _get_flux_s2n(self, n, data, w):
         fluxes, errors = self._get_flux_and_err(n, data, w)
         s2ns = errors/fluxes
-        return sqrt( (s2ns**2).sum(axis=1) )
+        if len(s2ns.shape) > 1:
+            return sqrt( (s2ns**2).sum(axis=1) )
+        else:
+            return s2ns
 
     def _read_means(self):
         fname=self._get_means_file()

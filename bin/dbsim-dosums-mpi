@@ -22,7 +22,7 @@ parser.add_argument('--select',default=None,
 parser.add_argument('--nsigma',default=3.0,type=float,
                     help='number sigma error bars to print')
 
-parser.add_argument('--preselect',action='store_true',help='preselect s2n_true > 5')
+parser.add_argument('--preselect',action='store_true',help='preselect')
 
 # ignored but needed for getting a file name
 parser.add_argument('--ntest',default=None,type=int,
