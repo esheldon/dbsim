@@ -426,6 +426,21 @@ def get_fitter(sim_conf, fit_conf, fitrng):
             mof_fitter=mof_fitter,
         )
 
+    elif fit_conf['fitter'] in ['metacal-mom']:
+        if fit_conf['fofs']['find_fofs']:
+            mof_fitter = MOFFitter(fit_conf, nband, fitrng)
+        else:
+            mof_fitter=None
+
+        cls=fitters.MomentMetacalFitter
+        fitter=cls(
+            fit_conf,
+            nband,
+            fitrng,
+            mof_fitter=mof_fitter,
+        )
+
+
     elif fit_conf['fitter']=='mof':
         fitter = MOFFitter(fit_conf, nband, fitrng)
 

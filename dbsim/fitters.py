@@ -681,6 +681,124 @@ class AdmomMetacalAvgFitter(AdmomMetacalFitter):
         return boot
 
 
+class MomentMetacalFitter(MetacalFitter):
+    def __init__(self, *args, **kw):
+        super(MomentMetacalFitter,self).__init__(*args, **kw)
+        self._set_mompars()
+        
+    def _set_mompars(self):
+        wpars=self['weight']
+
+        T=ngmix.moments.fwhm_to_T(wpars['fwhm'])
+
+        # the weight is always centered at 0, 0 or the
+        # center of the coordinate system as defined
+        # by the jacobian
+
+        weight=ngmix.GMixModel(
+            [0.0, 0.0, 0.0, 0.0, T, 1.0],
+            'gauss',
+        )
+
+        # make the max of the weight 1.0 to get better
+        # fluxes
+
+        weight.set_norms()
+        norm=weight.get_data()['norm'][0]
+        weight.set_flux(1.0/norm)
+
+        self.weight=weight
+
+        wpars['use_canonical_center']=wpars.get('use_canonical_center',False)
+
+    def _do_one_metacal(self, mbobs):
+        assert len(mbobs)==1
+        assert len(mbobs[0])==1
+
+        conf=self['metacal']
+
+        mpars=conf['metacal_pars']
+
+        odict=ngmix.metacal.get_all_metacal(
+            mbobs,
+            rng=self.rng,
+            **mpars
+        )
+
+
+        res={}
+
+        for type in mpars['types']:
+            mbobs=odict[type]
+            obs=mbobs[0][0]
+
+            tres=self._measure_moments(obs)
+            tres['g'] = tres['e']
+            tres['g_cov'] = tres['e_cov']
+
+            if type=='noshear':
+                pres  = self._measure_moments(obs.psf)
+                tres['gpsf'] = pres['e']
+                tres['Tpsf'] = pres['T']
+
+            res[type]=tres
+
+        res['mcal_flags']=0
+        boot=MomentBootstrapperFaker(res)
+        return boot 
+
+
+
+    def _get_bootstrapper(self, mbobs):
+        from ngmix.bootstrap import AdmomMetacalBootstrapper
+
+        return AdmomMetacalBootstrapper(
+            mbobs,
+            admom_pars=self['metacal'].get('admom_pars',None),
+            metacal_pars=self['metacal']['metacal_pars'],
+        )
+
+
+    def _measure_moments(self, obs):
+        """
+        measure weighted moments
+        """
+
+        wpars=self['weight']
+
+        if wpars['use_canonical_center']:
+            #logger.debug('        getting moms with canonical center')
+        
+            ccen=(numpy.array(obs.image.shape)-1.0)/2.0
+            jold=obs.jacobian
+            obs.jacobian = ngmix.Jacobian(
+                row=ccen[0],
+                col=ccen[1],
+                dvdrow=jold.dvdrow,
+                dudrow=jold.dudrow,
+                dvdcol=jold.dvdcol,
+                dudcol=jold.dudcol,
+
+            )
+
+        res = self.weight.get_weighted_moments(obs=obs,maxrad=1.e9)
+
+        if wpars['use_canonical_center']:
+            obs.jacobian=jold
+
+        if res['flags'] != 0:
+            raise BootGalFailure("        moments failed")
+
+        res['numiter'] = 1
+
+        return res
+
+class MomentBootstrapperFaker(object):
+    def __init__(self, res):
+        self.res=res
+    def get_metacal_result(self):
+        return self.res
+
 class MaxFitter(FitterBase):
     """
     run a max like fitter
