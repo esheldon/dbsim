@@ -273,6 +273,8 @@ def do_meta_mof_full(sim, fit_conf, fitter, show=False):
     reslists={}
     for key in odict:
 
+        mcal_obs = odict[key]
+
         ttm = time.time()
         reslist=[]
         for i in range(hist.size):
@@ -288,7 +290,7 @@ def do_meta_mof_full(sim, fit_conf, fitter, show=False):
             # this is an array with all results from objects
             # in the fof
             data = fitter.go(
-                sim.obs,
+                mcal_obs,
                 subcat,
                 ntry=mofc['ntry'],
             )
