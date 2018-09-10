@@ -668,7 +668,7 @@ class AdmomMetacalAvgFitter(AdmomMetacalFitter):
                     ttyperes=tres[type]
                     for key in typeres:
                         if key not in dontavg:
-                            print('    key:',key)
+                            #print('    key:',key)
                             typeres[key] += ttyperes[key]
 
             fac = 1.0/nkept
