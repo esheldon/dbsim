@@ -242,6 +242,142 @@ class MOFFitter(FitterBase):
 
         return output
 
+class MOFFitterFull(MOFFitter):
+    def __init__(self, *args, **kw):
+        """
+        we don't use the MOFFitter init
+        """
+        FitterBase.__init__(self, *args, **kw)
+
+    def go(self, mbobs, cat, ntry=2, get_fitter=False):
+        """
+        run the multi object fitter
+
+        parameters
+        ----------
+        mbobs_list: list of MultiBandObsList
+            One for each object
+
+        returns
+        -------
+        data: ndarray
+            Array with all output fields
+        """
+
+        mofc = self['mof']
+        nband=len(mbobs)
+        jacobian=mbobs[0][0].jacobian
+
+        prior=self._get_prior(
+            cat,
+            jacobian,
+        )
+
+        try:
+            _fit_all_psfs([mbobs], mofc['psf'])
+
+            fitter = mof.MOF(
+                mbobs,
+                mofc['model'],
+                cat.size,
+                prior=prior,
+            )
+
+            for i in range(ntry):
+                guess=mof.moflib.get_full_image_guesses(
+                    cat,
+                    nband,
+                    jacobian,
+                    mofc['model'],
+                    self.rng,
+                )
+                fitter.go(guess)
+
+                res=fitter.get_result()
+                if res['flags']==0:
+                    break
+
+        except BootPSFFailure as err:
+            print(str(err))
+            res={'flags':1}
+
+        if res['flags'] != 0:
+            fitter=None
+            data=None
+        else:
+            average_fof_shapes = self.get('average_fof_shapes',False)
+            if average_fof_shapes:
+                raise NotImplementedError('make sure works for full mof')
+                logger.debug('averaging fof shapes')
+                resavg=fitter.get_result_averaged_shapes()
+                data=self._get_output([resavg], fitter.nband)
+            else:
+                reslist=fitter.get_result_list()
+                data=self._get_output(reslist, fitter.nband)
+
+        if get_fitter:
+            return fitter, data
+        else:
+            return data
+
+    def _get_prior(self, objects, jacobian):
+        """
+        Note a single jacobian is being sent.  for multi-band this
+        is the same as assuming they are all on the same coordinate system.
+        
+        assuming all images have the 
+        prior for N objects.  The priors are the same for
+        structural parameters, the only difference being the
+        centers
+        """
+
+        conf=self['mof']
+        ppars=conf['priors']
+
+        nobj=len(objects)
+
+        cen_priors=[]
+
+        cen_sigma=jacobian.get_scale() # a pixel
+        for i in range(nobj):
+            row=objects['y'][i]#-1
+            col=objects['x'][i]#-1
+
+            v, u = jacobian(row, col)
+            p=ngmix.priors.CenPrior(
+                v,
+                u,
+                cen_sigma, cen_sigma,
+                rng=self.rng,
+            )
+            cen_priors.append(p)
+
+        gp = ppars['g']
+        assert gp['type']=="ba"
+        g_prior = self._get_prior_generic(gp)
+
+        T_prior = self._get_prior_generic(ppars['T'])
+        F_prior = self._get_prior_generic(ppars['flux'])
+
+        if conf['model']=='bdf':
+            fracdev_prior = ngmix.priors.Normal(0.5, 0.1, rng=self.rng)
+
+            return mof.priors.PriorBDFSepMulti(
+                cen_priors,
+                g_prior,
+                T_prior,
+                fracdev_prior,
+                [F_prior]*self.nband,
+            )
+        else:
+            return mof.priors.PriorSimpleSepMulti(
+                cen_priors,
+                g_prior,
+                T_prior,
+                [F_prior]*self.nband,
+            )
+
+
 class MetacalFitter(FitterBase):
     """
     run metacal on all objects found in the image, using

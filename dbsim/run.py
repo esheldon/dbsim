@@ -9,7 +9,7 @@ from . import simulation
 from . import descwl_sim
 
 from . import fitters
-from .fitters import MOFFitter, MetacalFitter
+from .fitters import MOFFitter, MOFFitterFull, MetacalFitter
 
 from . import visualize
 
@@ -79,7 +79,7 @@ def go(sim_conf,
                 return
 
         if metad is not None and metad['dometa']:
-            resdict, nobj, tm = do_meta(sim, fit_conf, fitter)
+            resdict, nobj, tm = do_meta(sim, fit_conf, fitter, show=show)
             reslist=[resdict]
         else:
             reslist, nobj, tm = do_fits(sim, fit_conf, fitter, show=show)
@@ -136,9 +136,12 @@ def do_meta(sim, fit_conf, fitter, show=False):
     """
     mtype=fit_conf['meta']['type']
     if mtype=='meta-detect':
-        tup = do_meta_detect(sim, fit_conf, fitter, show=False)
+        tup = do_meta_detect(sim, fit_conf, fitter, show=show)
     elif mtype in ['meta-mof','meta-max']:
-        tup = do_meta_mof(sim, fit_conf, fitter, show=False)
+        if fit_conf['fitter']=='mof-full':
+            tup = do_meta_mof_full(sim, fit_conf, fitter, show=show)
+        else:
+            tup = do_meta_mof(sim, fit_conf, fitter, show=show)
     else:
         raise ValueError("bad meta type: '%s'" % mtype)
     
@@ -222,6 +225,81 @@ def do_meta_mof(sim, fit_conf, fitter, show=False):
 
     return reslists, nobj, tm_fit
     
+def do_meta_mof_full(sim, fit_conf, fitter, show=False):
+    """
+    metacal the MOF process but not detection, using the
+    full MOF not stamp MOF
+    """
+    import mof
+
+    mofc=fit_conf['mof']
+
+    # create metacal versions of image
+    metacal_pars=fit_conf['metacal']['metacal_pars']
+    if metacal_pars.get('symmetrize_psf',False):
+        fitters._fit_all_psfs([sim.obs], fit_conf['mof']['psf'])
+
+    odict=ngmix.metacal.get_all_metacal(
+        sim.obs,
+        **metacal_pars
+    )
+
+    # create the catalog based on original images
+    # this will just run sx and create seg and
+    # cat
+    medser = sim.get_medsifier()
+
+    mm=medser.get_multiband_meds()
+
+    mn=mof.fofs.MEDSNbrs(
+        mm.mlist,
+        fit_conf['fofs'],
+    )
+
+    nbr_data = mn.get_nbrs()
+
+    nf = mof.fofs.NbrsFoF(nbr_data)
+    fofs = nf.get_fofs()
+    if fofs.size==0:
+        return [], 0, 0.0
+
+    if show:
+        sim._plot_fofs(mm, fofs)
+
+    hist,rev=eu.stat.histogram(fofs['fofid'], rev=True)
+
+    nobj=0
+    tm_fit=0.0
+    reslists={}
+    for key in odict:
+
+        ttm = time.time()
+        reslist=[]
+        for i in range(hist.size):
+            assert rev[i] != rev[i+1],'all fof groups should be populated'
+            w=rev[ rev[i]:rev[i+1] ]
+
+            # assuming number is index+1
+            indices=fofs['number'][w]-1
+            nobj += indices.size
+
+            subcat = medser.cat[indices]
+
+            # this is an array with all results from objects
+            # in the fof
+            data = fitter.go(
+                sim.obs,
+                subcat,
+                ntry=mofc['ntry'],
+            )
+
+            reslist.append(data)
+
+        reslists[key] = reslist
+        tm_fit += time.time() - ttm
+
+    return reslists, nobj, tm_fit
+ 
 def do_fits(sim,
             fit_conf,
             fitter,
@@ -444,8 +522,12 @@ def get_fitter(sim_conf, fit_conf, fitrng):
     elif fit_conf['fitter']=='mof':
         fitter = MOFFitter(fit_conf, nband, fitrng)
 
+    elif fit_conf['fitter']=='mof-full':
+        fitter = MOFFitterFull(fit_conf, nband, fitrng)
+
     elif fit_conf['fitter']=='max':
         fitter = fitters.MaxFitter(fit_conf, nband, fitrng)
+
     else:
         raise ValueError("bad fitter: '%s'" % fit_conf['fitter'])
 
