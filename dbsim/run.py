@@ -11,6 +11,8 @@ from . import descwl_sim
 from . import fitters
 from .fitters import MOFFitter, MOFFitterFull, MetacalFitter
 
+from . import util
+
 from . import visualize
 
 logger = logging.getLogger(__name__)
@@ -89,13 +91,13 @@ def go(sim_conf,
             tm_fit += tm
 
             image_id = rng.randint(0,2**30)
-            for r in reslist:
-                r['image_id'] = image_id
-            truth=sim.get_truth_catalog()
-            truth['image_id'] = image_id
+            #for r in reslist:
+            #    r['image_id'] = image_id
+            #truth=sim.get_truth_catalog()
+            #truth['image_id'] = image_id
 
             datalist += reslist
-            truth_list += [truth]
+            #truth_list += [truth]
 
             if nobj > 0:
                 nfit += 1
@@ -124,8 +126,9 @@ def go(sim_conf,
             write_meta(output_file, datalist, meta, fit_conf)
         else:
             data = eu.numpy_util.combine_arrlist(datalist)
-            truth_data = eu.numpy_util.combine_arrlist(truth_list)
-            write_output(output_file, data, truth_data, meta)
+            #truth_data = eu.numpy_util.combine_arrlist(truth_list)
+            #truth_
+            write_output(output_file, data, meta)
 
 
 def do_meta(sim, fit_conf, fitter, show=False):
@@ -135,11 +138,15 @@ def do_meta(sim, fit_conf, fitter, show=False):
     sending all to MOF 
     """
     mtype=fit_conf['meta']['type']
+    fit_conf['meta']['dosim'] = fit_conf['meta'].get('dosim',False)
     if mtype=='meta-detect':
         tup = do_meta_detect(sim, fit_conf, fitter, show=show)
     elif mtype in ['meta-mof','meta-max']:
         if fit_conf['fitter']=='mof-full':
-            tup = do_meta_mof_full(sim, fit_conf, fitter, show=show)
+            if fit_conf['meta']['dosim']:
+                tup = do_meta_mof_full_withsim(sim, fit_conf, fitter, show=show)
+            else:
+                tup = do_meta_mof_full(sim, fit_conf, fitter, show=show)
         else:
             tup = do_meta_mof(sim, fit_conf, fitter, show=show)
     else:
@@ -263,6 +270,8 @@ def do_meta_mof_full(sim, fit_conf, fitter, show=False):
     if fofs.size==0:
         return [], 0, 0.0
 
+    cat=medser.cat
+
     if show:
         sim._plot_fofs(mm, fofs)
 
@@ -285,15 +294,21 @@ def do_meta_mof_full(sim, fit_conf, fitter, show=False):
             indices=fofs['number'][w]-1
             nobj += indices.size
 
-            subcat = medser.cat[indices]
+            subcat = cat[indices]
 
             # this is an array with all results from objects
             # in the fof
-            data = fitter.go(
+            mof_fitter, data = fitter.go(
                 mcal_obs,
                 subcat,
                 ntry=mofc['ntry'],
+                get_fitter=True,
             )
+
+            if show:
+                gmix=mof_fitter.get_convolved_gmix()
+                tobs = sim.obs[0][0]
+                _plot_compare_model(gmix, tobs)
 
             reslist.append(data)
 
@@ -302,6 +317,285 @@ def do_meta_mof_full(sim, fit_conf, fitter, show=False):
 
     return reslists, nobj, tm_fit
  
+def _plot_compare_model(gmix, tobs):
+    import biggles
+    import images
+    model_im = gmix.make_image(tobs.image.shape, jacobian=tobs.jacobian)
+    imdiff = model_im - tobs.image
+    tab = biggles.Table(2,2,aspect_ratio=1.0)
+    tab[0,0] = images.view(tobs.image,show=False,title='im')
+    tab[0,1] = images.view(model_im,show=False,title='model')
+    tab[1,0] = images.view(imdiff,show=False,title='diff')
+    tab.show()
+    if input('hit a key (q to quit): ')=='q':
+        stop
+
+def do_meta_mof_full_withsim_old(sim, fit_conf, fitter, show=False):
+    """
+    not finding groups, just fitting everything.  This means
+    it won't work on bigger images with lots of empty space
+    """
+    import mof
+
+    assert fit_conf['fofs']['find_fofs']==False
+
+    tm0 = time.time()
+    mofc=fit_conf['mof']
+
+    # create metacal versions of image
+    metacal_pars=fit_conf['metacal']['metacal_pars']
+    if metacal_pars.get('symmetrize_psf',False):
+        fitters._fit_all_psfs([sim.obs], fit_conf['mof']['psf'])
+
+    # create the catalog based on original images
+    # this will just run sx and create seg and
+    # cat
+    medser = sim.get_medsifier()
+    cat=medser.cat
+
+    mof_fitter, data = fitter.go(
+        sim.obs,
+        cat,
+        ntry=mofc['ntry'],
+        get_fitter=True,
+    )
+
+    tobs = sim.obs[0][0]
+    if show:
+        gmix=mof_fitter.get_convolved_gmix()
+        _plot_compare_model(gmix, tobs)
+
+    sim_mbobs_after = ngmix.MultiBandObsList()
+    sim_mbobs_before = ngmix.MultiBandObsList()
+
+    for band,obslist in enumerate(sim.obs):
+        sim_obslist_after = ngmix.ObsList()
+        sim_obslist_before = ngmix.ObsList()
+        for obsnum,obs in enumerate(obslist):
+            gmix=mof_fitter.get_convolved_gmix(
+                band=band,
+                obsnum=obsnum,
+            )
+            sobs_after = ngmix.simobs.simulate_obs(gmix, obs, add_noise=False)
+            sobs_before = ngmix.simobs.simulate_obs(gmix, obs, add_noise=True)
+
+            # get another noise field to be used in metacal fixnoise
+            # also used for the after obs
+            sobs_before2 = ngmix.simobs.simulate_obs(gmix, obs, add_noise=True)
+
+            sobs_before.noise = sobs_before2.noise_image
+
+            # meta data gets passed on by metacal, we can use the total
+            # noise image later for the 'after' obs
+            sobs_after.meta['total_noise'] = \
+                    sobs_before.noise_image + sobs_before2.noise_image
+            #import images
+            #images.view(sobs_before.image)
+            #stop
+
+            sim_obslist_after.append( sobs_after )
+            sim_obslist_before.append( sobs_before )
+
+        sim_mbobs_after.append(sim_obslist_after)
+        sim_mbobs_before.append(sim_obslist_before)
+
+    odict=ngmix.metacal.get_all_metacal(
+        sim.obs,
+        **metacal_pars
+    )
+
+    after_metacal_pars={}
+    after_metacal_pars.update(metacal_pars)
+    after_metacal_pars['fixnoise']=False
+    odict_after=ngmix.metacal.get_all_metacal(
+        sim_mbobs_after,
+        **after_metacal_pars
+    )
+
+    before_metacal_pars={}
+    before_metacal_pars.update(metacal_pars)
+    before_metacal_pars['use_noise_image']=True
+
+    odict_before=ngmix.metacal.get_all_metacal(
+        sim_mbobs_before,
+        **before_metacal_pars
+    )
+
+    # now go and add noise after shearing
+    for key in odict_after:
+        mbobs=odict_after[key]
+        for obslist in mbobs:
+            for obs in obslist:
+                #import images
+                #images.view(obs.image)
+                #stop
+
+                # because with fixnoise we added extra noise
+                obs.weight *= 0.5
+                obs.image += obs.meta['total_noise']
+
+    # now run fits on all these images
+    allstuff=[
+        (None,odict),
+        ('after',odict_after),
+        ('before',odict_before),
+    ]
+
+    reslists={}
+    for name,todict in allstuff:
+        n=util.Namer(front=name)
+        for key,mbobs in todict.items():
+            data = fitter.go(
+                mbobs,
+                cat,
+                ntry=mofc['ntry'],
+            )
+
+            reslists[n(key)] = [data]
+
+    nobj = cat.size
+    tm_fit = time.time()-tm0
+    return reslists, nobj, tm_fit
+ 
+
+
+def do_meta_mof_full_withsim(sim, fit_conf, fitter, show=False):
+    """
+    not finding groups, just fitting everything.  This means
+    it won't work on bigger images with lots of empty space
+    """
+    import mof
+
+    assert fit_conf['fofs']['find_fofs']==False
+
+    tm0 = time.time()
+    mofc=fit_conf['mof']
+
+    # create metacal versions of image
+    metacal_pars=fit_conf['metacal']['metacal_pars']
+    if metacal_pars.get('symmetrize_psf',False):
+        fitters._fit_all_psfs([sim.obs], fit_conf['mof']['psf'])
+
+    # create the catalog based on original images
+    # this will just run sx and create seg and
+    # cat
+    medser = sim.get_medsifier()
+    cat=medser.cat
+
+    mof_fitter, data = fitter.go(
+        sim.obs,
+        cat,
+        ntry=mofc['ntry'],
+        get_fitter=True,
+    )
+
+    tobs = sim.obs[0][0]
+    if show:
+        gmix=mof_fitter.get_convolved_gmix()
+        _plot_compare_model(gmix, tobs)
+
+    sim_mbobs = ngmix.MultiBandObsList()
+
+    for band,obslist in enumerate(sim.obs):
+        sim_obslist = ngmix.ObsList()
+        for obsnum,obs in enumerate(obslist):
+            gmix=mof_fitter.get_convolved_gmix(
+                band=band,
+                obsnum=obsnum,
+            )
+            sobs = ngmix.simobs.simulate_obs(gmix, obs, add_noise=False)
+            sobs_noisy = ngmix.simobs.simulate_obs(gmix, obs, add_noise=True)
+            # this one for fixnoise
+            sobs_noisy2 = ngmix.simobs.simulate_obs(gmix, obs, add_noise=True)
+
+            # to be added after shearing
+            sobs.meta['noise'] = sobs_noisy.noise_image
+            sobs.meta['noise_for_fixnoise'] = sobs_noisy2.noise_image
+
+            sim_obslist.append( sobs )
+
+        sim_mbobs.append(sim_obslist)
+
+    # for the measurement on real data
+    odict=ngmix.metacal.get_all_metacal(
+        sim.obs,
+        **metacal_pars
+    )
+
+    # shear the noiseless sim
+    sim_metacal_pars={}
+    sim_metacal_pars.update(metacal_pars)
+    sim_metacal_pars['fixnoise']=False
+    sim_metacal_pars['types']=['1p','1m']
+    sim_odict=ngmix.metacal.get_all_metacal(
+        sim_mbobs,
+        **sim_metacal_pars
+    )
+
+
+    # now add the noise; the noise will be the same
+    # realization for each
+    for key,mbobs in sim_odict.items():
+        for obslist in mbobs:
+            for obs in obslist:
+                #import images
+                #images.view(obs.image)
+                #stop
+
+                obs.image += obs.meta['noise']
+                obs.noise = obs.meta['noise_for_fixnoise']
+
+
+    sim_metacal_pars2={}
+    sim_metacal_pars2.update(metacal_pars)
+    sim_metacal_pars2['use_noise_image']=True
+
+    sim_odict_1p=ngmix.metacal.get_all_metacal(
+        sim_odict['1p'],
+        **sim_metacal_pars2
+    )
+    sim_odict_1m=ngmix.metacal.get_all_metacal(
+        sim_odict['1m'],
+        **sim_metacal_pars2
+    )
+
+
+
+
+    reslists={}
+    reslists.update(
+        _process_one_full_mof_metacal(mofc, odict, cat, fitter)
+    )
+    reslists.update(
+        _process_one_full_mof_metacal(mofc, sim_odict_1p, cat, fitter, prefix='sim1p')
+    )
+    reslists.update(
+        _process_one_full_mof_metacal(mofc, sim_odict_1m, cat, fitter, prefix='sim1m')
+    )
+
+    nobj = cat.size
+    tm_fit = time.time()-tm0
+
+    return reslists, nobj, tm_fit
+
+def _process_one_full_mof_metacal(mofc, odict, cat, fitter, prefix=None):
+
+    n=util.Namer(front=prefix)
+
+    reslist={}
+    for key,mbobs in odict.items():
+        data = fitter.go(
+            mbobs,
+            cat,
+            ntry=mofc['ntry'],
+        )
+        reslist[n(key)] = [data]
+
+    return reslist
+ 
+
+
+
 def do_fits(sim,
             fit_conf,
             fitter,
@@ -551,7 +845,7 @@ def profile_sim(seed,sim_conf,fit_conf,ntrials,output_file):
     p.sort_stats('time').print_stats()
 
 
-def write_output(output_file, data, truth_data, meta):
+def write_output(output_file, data, meta):
     """
     write an output file, making the directory if needed
     """
@@ -567,7 +861,6 @@ def write_output(output_file, data, truth_data, meta):
     with fitsio.FITS(output_file,'rw',clobber=True) as fits:
         fits.write(data, extname='model_fits')
         fits.write(meta, extname='meta_data')
-        fits.write(truth_data, extname='truth_data')
 
 def write_meta(output_file, datalist, meta, fit_conf):
 
@@ -582,6 +875,12 @@ def write_meta(output_file, datalist, meta, fit_conf):
     logger.info("writing: %s" % output_file)
 
     types=fit_conf['metacal']['metacal_pars']['types']
+    if fit_conf['meta']['dosim']:
+        types_sim1p = ['sim1p_'+t for t in types]
+        types_sim1m = ['sim1m_'+t for t in types]
+        types += types_sim1p
+        types += types_sim1m
+
     with fitsio.FITS(output_file,'rw',clobber=True) as fits:
         for mtype in types:
 
