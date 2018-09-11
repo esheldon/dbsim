@@ -458,8 +458,7 @@ def do_meta_mof_full_withsim_old(sim, fit_conf, fitter, show=False):
     return reslists, nobj, tm_fit
  
 
-
-def do_meta_mof_full_withsim(sim, fit_conf, fitter, show=False):
+def do_meta_mof_full_withsim_old2(sim, fit_conf, fitter, show=False):
     """
     not finding groups, just fitting everything.  This means
     it won't work on bigger images with lots of empty space
@@ -503,10 +502,24 @@ def do_meta_mof_full_withsim(sim, fit_conf, fitter, show=False):
                 band=band,
                 obsnum=obsnum,
             )
+
+            psf_gmix = obs.psf.gmix
+            psf_im = psf_gmix.make_image(
+                obs.psf.image.shape,
+                jacobian=obs.psf.jacobian,
+            )
+            pn = psf_im.max()/1000.0
+            psf_im += fitter.rng.normal(size=psf_im.shape, scale=pn)
+            psf_wt = psf_im*0 + 1.0/pn**2
+
+
             sobs = ngmix.simobs.simulate_obs(gmix, obs, add_noise=False)
-            sobs_noisy = ngmix.simobs.simulate_obs(gmix, obs, add_noise=True)
+            sobs.psf.image = psf_im
+            sobs.psf.weight = psf_wt
+
+            sobs_noisy = ngmix.simobs.simulate_obs(gmix, obs, add_noise=True, rng=fitter.rng)
             # this one for fixnoise
-            sobs_noisy2 = ngmix.simobs.simulate_obs(gmix, obs, add_noise=True)
+            sobs_noisy2 = ngmix.simobs.simulate_obs(gmix, obs, add_noise=True, rng=fitter.rng)
 
             # to be added after shearing
             sobs.meta['noise'] = sobs_noisy.noise_image
@@ -519,6 +532,7 @@ def do_meta_mof_full_withsim(sim, fit_conf, fitter, show=False):
     # for the measurement on real data
     odict=ngmix.metacal.get_all_metacal(
         sim.obs,
+        rng=fitter.rng,
         **metacal_pars
     )
 
@@ -561,6 +575,154 @@ def do_meta_mof_full_withsim(sim, fit_conf, fitter, show=False):
 
 
 
+
+    reslists={}
+    reslists.update(
+        _process_one_full_mof_metacal(mofc, odict, cat, fitter)
+    )
+    reslists.update(
+        _process_one_full_mof_metacal(mofc, sim_odict_1p, cat, fitter, prefix='sim1p')
+    )
+    reslists.update(
+        _process_one_full_mof_metacal(mofc, sim_odict_1m, cat, fitter, prefix='sim1m')
+    )
+
+    nobj = cat.size
+    tm_fit = time.time()-tm0
+
+    return reslists, nobj, tm_fit
+
+
+def do_meta_mof_full_withsim(sim, fit_conf, fitter, show=False):
+    """
+    not finding groups, just fitting everything.  This means
+    it won't work on bigger images with lots of empty space
+    """
+    import mof
+
+    assert fit_conf['fofs']['find_fofs']==False
+
+    tm0 = time.time()
+    mofc=fit_conf['mof']
+
+    # create metacal versions of image
+    metacal_pars=fit_conf['metacal']['metacal_pars']
+    if metacal_pars.get('symmetrize_psf',False):
+        fitters._fit_all_psfs([sim.obs], fit_conf['mof']['psf'])
+
+    # create the catalog based on original images
+    # this will just run sx and create seg and
+    # cat
+    medser = sim.get_medsifier()
+    cat=medser.cat
+
+    mof_fitter, data = fitter.go(
+        sim.obs,
+        cat,
+        ntry=mofc['ntry'],
+        get_fitter=True,
+    )
+
+    tobs = sim.obs[0][0]
+    if show:
+        gmix=mof_fitter.get_convolved_gmix()
+        _plot_compare_model(gmix, tobs)
+
+    sim_mbobs_1p = ngmix.MultiBandObsList()
+    sim_mbobs_1m = ngmix.MultiBandObsList()
+
+    for band,obslist in enumerate(sim.obs):
+        sim_obslist_1p = ngmix.ObsList()
+        sim_obslist_1m = ngmix.ObsList()
+        gmix0=mof_fitter.get_gmix(
+            band=band,
+        )
+        theta=fitter.rng.uniform(low=0.0, high=np.pi)
+        #gmix0 = gmix0.get_rotated(theta)
+        for obsnum,obs in enumerate(obslist):
+
+       
+            ny,nx = obs.image.shape
+
+            gs0 = gmix0.make_galsim_object()
+            # galsim does everything relative to the canonical center, but
+            # for the mof fitter we had the origin a 0,0.  Shift over by
+            # the cen
+            ccen=(np.array(obs.image.shape)-1.0)/2.0
+            gs0 = gs0.shift(dx=-ccen[1], dy=-ccen[1])
+            if show and obsnum==0:
+                import images
+                gs = gs0.convolve(sim.psf)
+                tim = gs_1p.drawImage(nx=nx, ny=ny, scale=sim['pixel_scale']).array
+                images.compare_images(sim.obs, tim)
+                if 'q'==input('hit a key (q to quit): '):
+                    stop
+
+
+            gs0_1p = gs0.shear(g1= 0.01, g2=0.0)
+            gs0_1m = gs0.shear(g1=-0.01, g2=0.0)
+
+            # cheating on psf for now
+            gs_1p = gs0_1p.convolve(sim.psf)
+            gs_1m = gs0_1m.convolve(sim.psf)
+
+            im_1p = gs_1p.drawImage(nx=nx, ny=ny, scale=sim['pixel_scale']).array
+            im_1m = gs_1m.drawImage(nx=nx, ny=ny, scale=sim['pixel_scale']).array
+
+            sobs_1p = ngmix.simobs.simulate_obs(gmix_1p, obs, add_noise=False)
+            sobs_1p.psf.image = psf_im
+            sobs_1p.psf.weight = psf_wt
+
+            sobs_1m = ngmix.simobs.simulate_obs(gmix_1m, obs, add_noise=False)
+            sobs_1m.psf.image = psf_im
+            sobs_1m.psf.weight = psf_wt
+
+            # get some noise images to be used on all versions
+            sobs_noisy = ngmix.simobs.simulate_obs(gmix_1p, obs, add_noise=True, rng=fitter.rng)
+
+            #if show and obsnum==0:
+            #    import images
+            #    images.view(sobs_1p.image)
+            #    if 'q'==input('hit a key (q to quit): '):
+            #        stop
+
+            sobs_1p.image += sobs_noisy.noise_image
+            sobs_1m.image += sobs_noisy.noise_image
+
+            # this one for fixnoise
+            sobs_noisy2 = ngmix.simobs.simulate_obs(gmix_1p, obs, add_noise=True, rng=fitter.rng)
+            sobs_1p.noise = sobs_noisy2.noise_image.copy()
+            sobs_1m.noise = sobs_noisy2.noise_image.copy()
+
+            sim_obslist_1p.append( sobs_1p )
+            sim_obslist_1m.append( sobs_1m )
+
+
+
+        sim_mbobs_1p.append( sim_obslist_1p )
+        sim_mbobs_1m.append( sim_obslist_1m )
+
+    # for the measurement on real data
+    odict=ngmix.metacal.get_all_metacal(
+        sim.obs,
+        rng=fitter.rng,
+        **metacal_pars
+    )
+
+    sim_metacal_pars={}
+    sim_metacal_pars.update(metacal_pars)
+    sim_metacal_pars['use_noise_image']=True
+
+    sim_odict_1p=ngmix.metacal.get_all_metacal(
+        sim_mbobs_1p,
+        rng=fitter.rng, # not needed
+        **sim_metacal_pars
+    )
+    sim_odict_1m=ngmix.metacal.get_all_metacal(
+        sim_mbobs_1m,
+        rng=fitter.rng, # not needed
+        **sim_metacal_pars
+    )
 
     reslists={}
     reslists.update(
