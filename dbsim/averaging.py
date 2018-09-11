@@ -1188,11 +1188,11 @@ def mpi_add_all_sums(sums_list):
 
     return sums
 
-def mpi_get_sums_dt():
+def mpi_get_sums_dt(types=['noshear','1p','1m','2p','2m']):
     dt=[
         ('file_id','i8'),
     ]
-    for type in ['noshear','1p','1m','2p','2m']:
+    for type in types:
         n=util.Namer(back=type)
         dt += [
             (n('g'),'f8',2),
@@ -1268,14 +1268,23 @@ def mpi_do_all_sums_ext(fit_conf, fname, select=None):
 
     file_id=int( os.path.basename(fname)[-11:].replace('.fits','') )
 
-    dt=mpi_get_sums_dt()
-    output=np.zeros(1, dtype=dt)
-    o1=output[0]
-    o1['file_id'] = file_id
-
     print('processing:',fname)
     with fitsio.FITS(fname) as fits:
-        for type in ['noshear','1p','1m','2p','2m']:
+        types=['noshear','1p','1m','2p','2m']
+        if 'sim1p_1p' in fits:
+            print('doing sim types')
+            sim1ptypes += ['sim1p_'+t for t in types]
+            sim1mtypes += ['sim1m_'+t for t in types]
+            types += sim1ptypes 
+            types += sim1mtypes 
+
+        dt=mpi_get_sums_dt(types=types)
+        output=np.zeros(1, dtype=dt)
+        o1=output[0]
+        o1['file_id'] = file_id
+
+
+        for type in types:
 
             n=util.Namer(back=type)
 

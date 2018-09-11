@@ -598,6 +598,7 @@ def do_meta_mof_full_withsim(sim, fit_conf, fitter, show=False):
     not finding groups, just fitting everything.  This means
     it won't work on bigger images with lots of empty space
     """
+    import galsim
     import mof
 
     assert fit_conf['fofs']['find_fofs']==False
@@ -658,20 +659,25 @@ def do_meta_mof_full_withsim(sim, fit_conf, fitter, show=False):
             # the cen
             ccen=(np.array(obs.image.shape)-1.0)/2.0
 
+            gs0 = gmix0.make_galsim_object()
+
+            gs0 = gs0.shift(dx=-ccen[1]*scale, dy=-ccen[1]*scale)
+
             if show and obsnum==0:
                 import images
-                gs = gmix0.make_galsim_object(psf=sim.psf)
-                gs = gs.shift(dx=-ccen[1]*scale, dy=-ccen[1]*scale)
+                #gs = gmix0.make_galsim_object(psf=sim.psf)
+                #gs = gs.shift(dx=-ccen[1]*scale, dy=-ccen[1]*scale)
+                gs=galsim.Convolve(gs0, sim.psf)
                 tim = gs.drawImage(nx=nx, ny=ny, scale=sim['pixel_scale']).array
                 images.compare_images(sim.obs[0][0].image, tim)
                 if 'q'==input('hit a key (q to quit): '):
                     stop
 
-            gs_1p = gmix0.make_galsim_object(s1= 0.01, s2=0.0, psf=sim.psf)
-            gs_1m = gmix0.make_galsim_object(s1=-0.01, s2=0.0, psf=sim.psf)
+            gs0_1p = gs0.shear(g1= 0.01, g2=0.0)
+            gs0_1m = gs0.shear(g1=-0.01, g2=0.0)
 
-            gs_1p = gs_1p.shift(dx=-ccen[1]*scale, dy=-ccen[1]*scale)
-            gs_1m = gs_1m.shift(dx=-ccen[1]*scale, dy=-ccen[1]*scale)
+            gs_1p = galsim.Convolve(gs0_1p, sim.psf)
+            gs_1m = galsim.Convolve(gs0_1m, sim.psf)
 
             im_1p = gs_1p.drawImage(nx=nx, ny=ny, scale=sim['pixel_scale']).array
             im_1m = gs_1m.drawImage(nx=nx, ny=ny, scale=sim['pixel_scale']).array
