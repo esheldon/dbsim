@@ -93,7 +93,7 @@ class FitterBase(dict):
 
         elif ptype=='normal':
             prior = ngmix.priors.Normal(
-                ppars['cen'],
+                ppars['mean'],
                 ppars['sigma'],
                 rng=self.rng,
             )

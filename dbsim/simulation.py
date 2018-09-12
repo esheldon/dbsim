@@ -97,10 +97,13 @@ class Sim(dict):
         """
         #mm=self.get_multiband_meds(obs=obs, cat=cat, seg=seg)
         medser=self.get_medsifier(cat=cat, seg=seg, obs=obs)
+        if medser.cat.size==0:
+            return []
+
         mm=medser.get_multiband_meds()
 
         if obs is not None:
-            logger.info("assuming psfs are all the same")
+            #logger.info("assuming psfs are all the same")
             psf_obs=obs[0][0].psf
         else:
             psf_obs=None
@@ -171,6 +174,9 @@ class Sim(dict):
 
         #mm=self.get_multiband_meds(cat=cat, seg=seg, obs=obs)
         medser=self.get_medsifier(cat=cat, seg=seg, obs=obs)
+        if medser.cat.size==0:
+            return []
+
         mm=medser.get_multiband_meds()
 
         mbobs_list = mm.get_mbobs_list(weight_type=weight_type)
@@ -435,7 +441,7 @@ class Sim(dict):
         rng=self.rng
 
         if isinstance(c,dict):
-            if c['type']=='lognormal':
+            if c['type'] in ['lognormal','log-normal']:
                 pdf = ngmix.priors.LogNormal(
                     c['mean'],
                     c['sigma'],

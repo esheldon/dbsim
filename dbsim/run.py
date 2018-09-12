@@ -212,6 +212,8 @@ def do_meta_mof(sim, fit_conf, fitter, show=False):
     # this will just run sx and create seg and
     # cat
     medsifier=sim.get_medsifier()
+    if medsifier.cat.size==0:
+        return [], 0, 0.0
 
     nobj=0
     tm_fit=0.0
@@ -255,6 +257,9 @@ def do_meta_mof_full(sim, fit_conf, fitter, show=False):
     # this will just run sx and create seg and
     # cat
     medser = sim.get_medsifier()
+    if medser.cat.size==0:
+        return [], 0, 0.0
+
 
     mm=medser.get_multiband_meds()
 

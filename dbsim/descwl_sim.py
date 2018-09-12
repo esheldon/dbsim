@@ -29,14 +29,22 @@ class DESWLSim(simulation.Sim):
         self.rng=rng
         self.gs_rng = galsim.random.BaseDeviate(seed = self.rng.randint(0,2**30))
 
-        self._set_view_area()
+        # can specify nobj or the area
+        if not 'nobj' in self:
+            self._set_view_area()
         self._set_dims()
 
     def make_obs(self, add_noise=True):
         """
         make a new MultiBandObsList, sampling from the catalog
         """
-        cat=self.catalog_sampler.sample(area=self['area'])
+        kw={}
+        if 'nobj' in self:
+            kw['nobj'] = self['nobj']
+        else:
+            kw['area'] = self['area']
+
+        cat=self.catalog_sampler.sample(**kw)
         logger.debug('rendering: %d' % cat.size)
 
         # offsets in arcminutes
