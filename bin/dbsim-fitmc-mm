@@ -50,4 +50,10 @@ def main():
     st['shear_true'] = simc['shear']
     mcfits = dbsim.averaging.get_m_c_oneshear(st, nsig=args.nsigma)
 
+    if 'wsum_sim1p_1p' in sums.dtype.names:
+        st_1p = dbsim.averaging.mpi_average_shear(sums,prefix='sim1p')
+        st_1m = dbsim.averaging.mpi_average_shear(sums,prefix='sim1m')
+
+        Rdiff = (st_1p['shear'][0,0]-st_1m['shear'][0,0])/0.02
+        print('Rsim: %g' % Rdiff)
 main()

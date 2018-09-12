@@ -1272,9 +1272,8 @@ def mpi_do_all_sums_ext(fit_conf, fname, select=None):
     with fitsio.FITS(fname) as fits:
         types=['noshear','1p','1m','2p','2m']
         if 'sim1p_1p' in fits:
-            print('doing sim types')
-            sim1ptypes += ['sim1p_'+t for t in types]
-            sim1mtypes += ['sim1m_'+t for t in types]
+            sim1ptypes = ['sim1p_'+t for t in types]
+            sim1mtypes = ['sim1m_'+t for t in types]
             types += sim1ptypes 
             types += sim1mtypes 
 
@@ -1332,7 +1331,7 @@ def mpi_do_all_sums(fname, select=None):
     return output
 
 
-def mpi_average_shear(sums, verbose=True):
+def mpi_average_shear(sums, verbose=True, prefix=None):
     dt=[
         #('R','f8', 2),
         ('R','f8', (2,2)),
@@ -1343,15 +1342,27 @@ def mpi_average_shear(sums, verbose=True):
     output = eu.numpy_util.add_fields(sums, dt)
     st=output[0]
 
-    g_mean = st['g']/st['wsum']
-    gsq_mean = st['gsq']/st['wsum']
+    if prefix is None:
+        g_mean = st['g']/st['wsum']
+        gsq_mean = st['gsq']/st['wsum']
 
-    g_err = np.sqrt( (gsq_mean - g_mean**2)/st['wsum'] )
+        g_err = np.sqrt( (gsq_mean - g_mean**2)/st['wsum'] )
 
-    g1p_mean = st['g_1p']/st['wsum_1p']
-    g1m_mean = st['g_1m']/st['wsum_1m']
-    g2p_mean = st['g_2p']/st['wsum_2p']
-    g2m_mean = st['g_2m']/st['wsum_2m']
+        g1p_mean = st['g_1p']/st['wsum_1p']
+        g1m_mean = st['g_1m']/st['wsum_1m']
+        g2p_mean = st['g_2p']/st['wsum_2p']
+        g2m_mean = st['g_2m']/st['wsum_2m']
+    else:
+        wsum=st['wsum_'+prefix+'_noshear']
+        g_mean = st['g_'+prefix+'_noshear']/wsum
+        gsq_mean = st['gsq_'+prefix+'_noshear']/wsum
+
+        g_err = np.sqrt( (gsq_mean - g_mean**2)/wsum )
+
+        g1p_mean = st['g_'+prefix+'_1p']/st['wsum_'+prefix+'_1p']
+        g1m_mean = st['g_'+prefix+'_1m']/st['wsum_'+prefix+'_1m']
+        g2p_mean = st['g_'+prefix+'_2p']/st['wsum_'+prefix+'_2p']
+        g2m_mean = st['g_'+prefix+'_2m']/st['wsum_'+prefix+'_2m']
 
     #st['R'][0] = (g1p_mean[0] - g1m_mean[0])/0.02
     #st['R'][1] = (g2p_mean[1] - g2m_mean[1])/0.02
