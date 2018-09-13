@@ -150,6 +150,7 @@ class MOFFitter(FitterBase):
             _fit_all_psfs(mbobs_list, self['mof']['psf'])
 
             mofc = self['mof']
+            guess_from_priors=mofc.get('guess_from_priors',False)
             fitter = mof.MOFStamps(
                 mbobs_list,
                 mofc['model'],
@@ -161,6 +162,8 @@ class MOFFitter(FitterBase):
                     mofc['detband'],
                     mofc['model'],
                     self.rng,
+                    prior=self.mof_prior,
+                    guess_from_priors=guess_from_priors,
                 )
                 fitter.go(guess)
 
@@ -265,6 +268,7 @@ class MOFFitterFull(MOFFitter):
         """
 
         mofc = self['mof']
+        guess_from_priors=mofc.get('guess_from_priors',False)
         nband=len(mbobs)
         jacobian=mbobs[0][0].jacobian
 
@@ -290,6 +294,8 @@ class MOFFitterFull(MOFFitter):
                     jacobian,
                     mofc['model'],
                     self.rng,
+                    prior=prior,
+                    guess_from_priors=guess_from_priors,
                 )
                 fitter.go(guess)
 
