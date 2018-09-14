@@ -258,7 +258,7 @@ def do_meta_mof_full(sim, fit_conf, fitter, show=False):
     # cat
     medser = sim.get_medsifier()
     if medser.cat.size==0:
-        return [], 0, 0.0
+        return {}, 0, 0.0
 
 
     mm=medser.get_multiband_meds()
@@ -620,6 +620,8 @@ def do_meta_mof_full_withsim(sim, fit_conf, fitter, show=False):
     # this will just run sx and create seg and
     # cat
     medser = sim.get_medsifier()
+    if medser.cat.size==0:
+        return {}, 0, 0.0
     cat=medser.cat
 
     mof_fitter, data = fitter.go(
@@ -1063,9 +1065,11 @@ def write_meta(output_file, datalist, meta, fit_conf):
 
             dlist=[]
             for d in datalist:
-                if mtype in d:
-                    # this is a list of results
-                    dlist += d[mtype]
+                if d is not None:
+                    if mtype in d:
+                        # this is a list of results
+                        if d[mtype] is not None:
+                            dlist += d[mtype]
 
             if len(dlist) == 0:
                 raise RuntimeError("no results found for type: %s" % mtype)

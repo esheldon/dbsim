@@ -1269,36 +1269,40 @@ def mpi_do_all_sums_ext(fit_conf, fname, select=None):
     file_id=int( os.path.basename(fname)[-11:].replace('.fits','') )
 
     print('processing:',fname)
-    with fitsio.FITS(fname) as fits:
-        types=['noshear','1p','1m','2p','2m']
-        if 'sim1p_1p' in fits:
-            sim1ptypes = ['sim1p_'+t for t in types]
-            sim1mtypes = ['sim1m_'+t for t in types]
-            types += sim1ptypes 
-            types += sim1mtypes 
+    try:
+        with fitsio.FITS(fname) as fits:
+            types=['noshear','1p','1m','2p','2m']
+            if 'sim1p_1p' in fits:
+                sim1ptypes = ['sim1p_'+t for t in types]
+                sim1mtypes = ['sim1m_'+t for t in types]
+                types += sim1ptypes 
+                types += sim1mtypes 
 
-        dt=mpi_get_sums_dt(types=types)
-        output=np.zeros(1, dtype=dt)
-        o1=output[0]
-        o1['file_id'] = file_id
+            dt=mpi_get_sums_dt(types=types)
+            output=np.zeros(1, dtype=dt)
+            o1=output[0]
+            o1['file_id'] = file_id
 
 
-        for type in types:
+            for type in types:
 
-            n=util.Namer(back=type)
+                n=util.Namer(back=type)
 
-            data = fits[type][:]
+                data = fits[type][:]
 
-            res=mpi_do_sums_ext(
-                fit_conf,
-                data,
-                select=select,
-            )
+                res=mpi_do_sums_ext(
+                    fit_conf,
+                    data,
+                    select=select,
+                )
 
-            o1[n('g')]    = res['gsum']
-            o1[n('wsum')] = res['wsum']
-            o1[n('wsq')]  = res['wsqsum']
-            o1[n('gsq')]  = res['gsqsum']
+                o1[n('g')]    = res['gsum']
+                o1[n('wsum')] = res['wsum']
+                o1[n('wsq')]  = res['wsqsum']
+                o1[n('gsq')]  = res['gsqsum']
+    except (IOError, OSError) as err:
+        print(err)
+        output=None
 
     return output
 
