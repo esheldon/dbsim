@@ -183,10 +183,10 @@ class MOFFitter(FitterBase):
             if average_fof_shapes:
                 logger.debug('averaging fof shapes')
                 resavg=fitter.get_result_averaged_shapes()
-                data=self._get_output([resavg], fitter.nband)
+                data=self._get_output(mbobs_list[0],[resavg], fitter.nband)
             else:
                 reslist=fitter.get_result_list()
-                data=self._get_output(reslist, fitter.nband)
+                data=self._get_output(mbobs_list[0], reslist, fitter.nband)
 
         if get_fitter:
             return fitter, data
@@ -197,6 +197,8 @@ class MOFFitter(FitterBase):
     def _get_dtype(self, npars, nband):
         n=Namer(front=self['mof']['model'])
         dt = [
+            ('image_id','i4'),
+            ('fof_id','i4'), # fof id within image
             ('psf_g','f8',2),
             ('psf_T','f8'),
             (n('nfev'),'i4'),
@@ -220,7 +222,7 @@ class MOFFitter(FitterBase):
             ]
         return dt
 
-    def _get_output(self,reslist,nband):
+    def _get_output(self, mbobs_example, reslist,nband):
 
         npars=reslist[0]['pars'].size
 
@@ -229,6 +231,10 @@ class MOFFitter(FitterBase):
 
         dt=self._get_dtype(npars, nband)
         output=np.zeros(len(reslist), dtype=dt)
+
+        meta=mbobs_example.meta
+        output['image_id'] = meta['image_id']
+        output['fof_id'] = meta['fof_id']
 
         for i,res in enumerate(reslist):
             t=output[i] 
@@ -600,7 +606,6 @@ class MetacalFitter(FitterBase):
 
     def _get_metacal_dtype(self, npars, nband):
         dt=[
-            ('image_id','i4'),
             ('x','f8'),
             ('y','f8'),
         ]

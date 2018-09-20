@@ -236,6 +236,54 @@ class Summer(dict):
             pixel_scale=self['simc']['pixel_scale'],
         )
 
+    def cut_nbrs(self, data):
+        """
+        cut out neighbors given some criteria
+        """
+        cutconf=self['select_conf']['cut_nbrs']
+
+        # cut anything that is in a fof group with more than
+        # one member
+        cut_all=cutconf.get('cut_all',False)
+        if not cut_all:
+            return data
+
+        h,rev = eu.stat.histogram(
+            data['image_id'],
+            min=0,
+            max=data['image_id'].max(),
+            rev=True,
+        )
+
+        # loop over images
+        keep=[]
+        for ii in range(h.size):
+            if rev[ii] != rev[ii+1]:
+                wim = rev[ rev[ii]:rev[ii+1] ]
+                # now loop over fof groups
+
+                hfof,revfof = eu.stat.histogram(
+                    data['fof_id'][wim],
+                    min=0,
+                    max=data['fof_id'][wim].max(),
+                    rev=True,
+                )
+
+                for ifof in range(hfof.size):
+                    if revfof[ifof] != rev[ifof+1]:
+                        wfof = revfof[ revfof[ifof]:revfof[ifof+1] ]
+                        wfof = wim[wfof]
+
+                        if cut_all:
+                            if wfof.size == 1:
+                                keep.append( wfof[0] )
+
+        keep = np.array(keep)
+        frac=float(keep.size)/data.size
+        print('    cut nbrs kept %d/%d %.2f' % (keep.size,data.size,frac))
+        return data[keep]
+
+
     def do_file_sums(self, fname):
         """
         get sums for a single file
@@ -264,6 +312,8 @@ class Summer(dict):
             
             data=data[mdata]
 
+        if 'cut_nbrs' in self['select_conf']:
+            data=self.cut_nbrs(data)
 
         if 'shear_index' not in data.dtype.names:
             data=self._add_shear_index(data)
@@ -773,6 +823,7 @@ class Summer(dict):
 
             d = files.read_config_file('select-'+self.args.select)
             self.select = d['select'].strip()
+            self['select_conf']=d
 
     def plot_fits(self):
 
