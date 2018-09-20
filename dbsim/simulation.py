@@ -356,7 +356,15 @@ class Sim(dict):
 
     def _make_flux_pdf(self):
         c=self['pdfs']['flux']
-        return self._get_generic_pdf(c)
+        if c['type']=='cosmos':
+            return pdfs.CosmosFluxSampler(
+                rng=self.rng,
+                flux_range=c['flux_range'],
+                r50_range=c['r50_range'],
+                flux_mult=c.get('flux_mult',1.0),
+            )
+        else:
+            return self._get_generic_pdf(c)
 
     def _make_primary_pdfs(self):
         if 'hlr_flux' in self['pdfs']:

@@ -263,3 +263,13 @@ class CosmosExtrap(object):
         return output
 
 
+class CosmosFluxSampler(CosmosSampler):
+    """
+    just sample the flux from cosmos
+    """
+    def sample(self, size=None):
+        r50flux=super(CosmosFluxSampler,self).sample(size=size)
+        if size is None:
+            return r50flux[1]
+        else:
+            return r50flux[:,1]
