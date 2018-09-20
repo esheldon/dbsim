@@ -80,17 +80,23 @@ def go(sim_conf,
             if 'q'==input('hit a key (q to quit): '):
                 return
 
+        image_id=i
         if metad is not None and metad['dometa']:
             resdict, nobj, tm = do_meta(sim, fit_conf, fitter, show=show)
             reslist=[resdict]
         else:
-            reslist, nobj, tm = do_fits(sim, fit_conf, fitter, show=show)
+            reslist, nobj, tm = do_fits(
+                sim,
+                fit_conf,
+                fitter,
+                image_id,
+                show=show,
+            )
 
         if reslist is not None:
             nobj_detected += nobj
             tm_fit += tm
 
-            image_id = rng.randint(0,2**30)
             #for r in reslist:
             #    r['image_id'] = image_id
             #truth=sim.get_truth_catalog()
@@ -778,6 +784,7 @@ def _process_one_full_mof_metacal(mofc, odict, cat, fitter, prefix=None):
 def do_fits(sim,
             fit_conf,
             fitter,
+            image_id,
             cat=None,
             seg=None,
             obs=None,
@@ -805,6 +812,15 @@ def do_fits(sim,
                 weight_type=weight_type,
                 show=show,
             )
+
+        for fof_id,tmbobs_list in enumerate(mbobs_list):
+            for mbobs in tmbobs_list:
+                mbobs.meta['image_id'] = image_id
+                mbobs.meta['fof_id'] = fof_id
+                #for obslist in mbobs:
+                #    for obs in obslist:
+                #        obs.meta['image_id'] = image_id
+                #        obs.meta['fof_id'] = fof_id
     else:
         logger.debug('extracting')
         mbobs_list = sim.get_mbobs_list(
@@ -813,6 +829,13 @@ def do_fits(sim,
             obs=obs,
             weight_type=weight_type,
         )
+        for fof_id,mbobs in enumerate(mbobs_list):
+            mbobs.meta['image_id'] = image_id
+            mbobs.meta['fof_id'] = fof_id
+            #for obslist in mbobs:
+            #    for obs in obslist:
+            #        obs.meta['image_id'] = image_id
+            #        obs.meta['fof_id'] = fof_id
 
     if len(mbobs_list)==0:
         reslist=None
