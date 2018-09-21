@@ -827,6 +827,8 @@ class Summer(dict):
             d = files.read_config_file('select-'+self.args.select)
             self.select = d['select'].strip()
             self['select_conf']=d
+        else:
+            self['select_conf']={}
 
     def plot_fits(self):
 
