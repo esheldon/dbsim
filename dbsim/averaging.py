@@ -623,8 +623,11 @@ class Summer(dict):
         return g, gerr, gpsf, gpsf_orig, R, Rpsf, Rsel, Rsel_psf
 
     def _print_frac(self, ntot, nkeep):
-        frac=float(nkeep)/ntot
-        print("        kept: %d/%d = %g" % (nkeep,ntot,frac))
+        if ntot > 0:
+            frac=float(nkeep)/ntot
+            print("        kept: %d/%d = %g" % (nkeep,ntot,frac))
+        else:
+            print("        no objects")
 
     def _do_select(self, data, w, type=None):
         """
