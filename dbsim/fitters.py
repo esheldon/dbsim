@@ -605,7 +605,8 @@ class MetacalFitter(FitterBase):
 
         scale=obs.jacobian.get_scale()
 
-        cen_sigma=scale
+        ppars=self['metacal']['priors']
+        cen_sigma=ppars['cen_sigma']
         cen_prior = ngmix.priors.CenPrior(
             pars[0],
             pars[1],
@@ -614,14 +615,19 @@ class MetacalFitter(FitterBase):
             rng=self.rng,
         )
 
-        g_prior=ngmix.priors.GPriorBA(0.3, rng=self.rng)
+        g_prior=ngmix.priors.GPriorBA(ppars['g_sigma'], rng=self.rng)
 
         # T changes very little with shear, we can use a
         # tight prior
         # T can be negative, so we need to choose the with
         # more carefully.  Use pixel scale
         T=pars[4]
-        T_sigma = 0.01 * (2*scale)**2
+        T_sigma = ppars['T_sigma_frac'] * (2*scale)**2
+        #T_sigma = ppars['T_sigma_frac'] * abs(T)
+        # this needs to be generalized
+        #if T_sigma < 0.03:
+        #    T_sigma=0.03
+
         T_prior=ngmix.priors.Normal(
             cen=T,
             sigma=T_sigma,
@@ -631,7 +637,7 @@ class MetacalFitter(FitterBase):
         if model=='bdf':
             Fstart=6
             fracdev=pars[5]
-            fracdev_sigma=abs(fracdev*0.01)
+            fracdev_sigma=ppars['fracdev_sigma']
             fracdev_prior=ngmix.priors.Normal(
                 cen=fracdev,
                 sigma=fracdev_sigma,
@@ -643,7 +649,7 @@ class MetacalFitter(FitterBase):
         F_priors=[]
         for i in range(self.nband):
             F=pars[Fstart+i]
-            F_sigma = abs(0.01*F)
+            F_sigma = abs(ppars['F_sigma_frac']*F)
             F_prior=ngmix.priors.Normal(
                 cen=F,
                 sigma=F_sigma,
