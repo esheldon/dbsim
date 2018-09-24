@@ -42,6 +42,8 @@ class FitterBase(dict):
             return None
 
         ppars=conf['priors']
+        if ppars.get('prior_from_mof',False):
+            return None
 
         # g
         gp = ppars['g']
@@ -563,6 +565,14 @@ class MetacalFitter(FitterBase):
         else:
             psf_fit_pars=None
 
+        if self.metacal_prior is not None:
+            prior=self.metacal_prior
+            guesser=None
+        else:
+            mof_pars=mbobs.meta['fit_pars']
+            prior=self._get_pars_prior(mof_pars,mbobs[0][0])
+            guesser=ngmix.guessers.PriorGuesser(prior)
+
         boot.fit_metacal(
 
             psf_pars['model'],
@@ -574,12 +584,92 @@ class MetacalFitter(FitterBase):
             psf_fit_pars=psf_fit_pars,
             psf_ntry=psf_pars['ntry'],
 
-            prior=self.metacal_prior,
+            prior=prior,
+            guesser=guesser,
             ntry=max_conf['ntry'],
 
             metacal_pars=conf['metacal_pars'],
         )
         return boot
+
+    def _get_pars_prior(self, pars, obs):
+        """
+        create a joint prior based on the input parameters
+
+        simple Normal used for all parameters except for
+        the ellipticity
+        """
+        #ngmix.print_pars(pars,front='    pars for prior and guesser:')
+        model=self['metacal']['model']
+        assert model==self['mof']['model']
+
+        scale=obs.jacobian.get_scale()
+
+        cen_sigma=scale
+        cen_prior = ngmix.priors.CenPrior(
+            pars[0],
+            pars[1],
+            cen_sigma,
+            cen_sigma,
+            rng=self.rng,
+        )
+
+        g_prior=ngmix.priors.GPriorBA(0.3, rng=self.rng)
+
+        # T changes very little with shear, we can use a
+        # tight prior
+        # T can be negative, so we need to choose the with
+        # more carefully.  Use pixel scale
+        T=pars[4]
+        T_sigma = 0.01 * (2*scale)**2
+        T_prior=ngmix.priors.Normal(
+            cen=T,
+            sigma=T_sigma,
+            rng=self.rng
+        )
+
+        if model=='bdf':
+            Fstart=6
+            fracdev=pars[5]
+            fracdev_sigma=abs(fracdev*0.01)
+            fracdev_prior=ngmix.priors.Normal(
+                cen=fracdev,
+                sigma=fracdev_sigma,
+                rng=self.rng
+            )
+        else:
+            Fstart=5
+
+        F_priors=[]
+        for i in range(self.nband):
+            F=pars[Fstart+i]
+            F_sigma = abs(0.01*F)
+            F_prior=ngmix.priors.Normal(
+                cen=F,
+                sigma=F_sigma,
+                rng=self.rng
+            )
+            F_priors.append(F_prior)
+
+
+        if model=='bdf':
+            prior=ngmix.joint_prior.PriorBDFSep(
+                cen_prior,
+                g_prior,
+                T_prior,
+                fracdev_prior,
+                F_priors,
+            )
+ 
+        else:
+            prior=ngmix.joint_prior.PriorSimpleSep(
+                cen_prior,
+                g_prior,
+                T_prior,
+                F_priors,
+            )
+            
+        return prior
 
     def _check_flags(self, mbobs):
         """

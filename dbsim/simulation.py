@@ -356,7 +356,7 @@ class Sim(dict):
 
     def _make_flux_pdf(self):
         c=self['pdfs']['flux']
-        if c['type']=='cosmos':
+        if isinstance(c,dict) and c['type']=='cosmos':
             return pdfs.CosmosFluxSampler(
                 rng=self.rng,
                 flux_range=c['flux_range'],
