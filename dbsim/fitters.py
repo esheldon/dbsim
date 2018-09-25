@@ -140,13 +140,17 @@ class MOFFitter(FitterBase):
         parameters
         ----------
         mbobs_list: list of MultiBandObsList
-            One for each object
+            One for each object.  If it is a simple
+            MultiBandObsList it will be converted
+            to a list
 
         returns
         -------
         data: ndarray
             Array with all output fields
         """
+        if not isinstance(mbobs_list,list):
+            mbobs_list=[mbobs_list]
 
         try:
             _fit_all_psfs(mbobs_list, self['mof']['psf'])
@@ -592,7 +596,7 @@ class MetacalFitter(FitterBase):
         )
         return boot
 
-    def _get_pars_prior(self, pars, obs):
+    def _get_pars_prior(sel, pars, obs):
         """
         create a joint prior based on the input parameters
 
@@ -1012,7 +1016,7 @@ class MomentMetacalFitter(MetacalFitter):
         if wpars['use_canonical_center']:
             #logger.debug('        getting moms with canonical center')
         
-            ccen=(numpy.array(obs.image.shape)-1.0)/2.0
+            ccen=(np.array(obs.image.shape)-1.0)/2.0
             jold=obs.jacobian
             obs.jacobian = ngmix.Jacobian(
                 row=ccen[0],
@@ -1265,6 +1269,381 @@ class MaxFitter(FitterBase):
             'g':[g1,g2],
             'T':T,
         }
+
+
+
+class Metacal2CompFitter(MetacalFitter):
+    """
+    fit 2 component models to all the input observations
+    """
+    def _do_one_metacal(self, mbobs):
+        """
+        run the bootstrapper on these observations
+        """
+
+        prior=self._get_2comp_prior(mbobs)
+        guesser=self._get_guesser(mbobs, prior)
+
+        boot=Metacal2CompBootstrapper(
+            mbobs,
+            self['mof_2comp'],
+            prior,
+            guesser,
+            metacal_pars=self['metacal']['metacal_pars'],
+        )
+        boot.go()
+        return boot
+
+    def _get_2comp_prior(self, mbobs):
+        """
+        we determine the prior from the parameters tht
+        are in mbobs.meta['fit_pars']
+
+        for now only the center information is used
+
+        we assume the jacobian is centered on the
+        best fit object center
+
+        both components will have a prior centered
+        on the best fit center, but we will set the
+        width of this prior quite wide
+        """
+        n_components=2
+
+        fit_pars=mbobs.meta['fit_pars']
+        jacobian=mbobs[0][0].jacobian
+
+        nband=len(mbobs)
+        mofc=self['mof_2comp']
+        ppars=mofc['priors']
+        model=mofc['model']
+
+        cen_priors=[]
+
+        for i in range(n_components):
+
+            # note this will be centered on 0,0; we assume the jacobian has
+            # been set to center at the best fit
+            p = self._get_prior_generic(ppars['cen'])
+            cen_priors.append(p)
+
+        gp = ppars['g']
+        assert gp['type']=="ba"
+        g_prior = self._get_prior_generic(gp)
+
+        T_prior = self._get_prior_generic(ppars['T'])
+
+        if ppars['flux']['type']=='from-pars-lognorm':
+            if model=='bdf':
+                fluxes = fit_pars[6:]
+            else:
+                fluxes = fit_pars[5:]
+            flux_max=fluxes.max()
+            sigma_frac=ppars['flux']['sigma_frac']
+            F_priors=[]
+            for flux in fluxes:
+                if flux < 0.0:
+                    flux = flux_max*0.1
+                F_prior=ngmix.priors.LogNormal(flux, flux*sigma_frac, rng=self.rng)
+                F_priors.append(F_prior)
+
+        else:
+            F_prior = self._get_prior_generic(ppars['flux'])
+            F_priors = [F_prior]*nband
+
+        if model=='bdf':
+            assert 'fracdev' in ppars,"set fracdev prior for bdf model"
+            fp = ppars['fracdev']
+            assert fp['type'] == 'normal','only normal prior supported for fracdev'
+
+            fracdev_prior = self._get_prior_generic(fp)
+
+            return mof.priors.PriorBDFSepMulti(
+                cen_priors,
+                g_prior,
+                T_prior,
+                fracdev_prior,
+                F_priors,
+            )
+        else:
+            return mof.priors.PriorSimpleSepMulti(
+                cen_priors,
+                g_prior,
+                T_prior,
+                F_priors,
+            )
+
+
+    def _get_guesser(self, mbobs, prior):
+        """
+        we take the guesser from the parameters
+        """
+        n_components=2
+
+        fit_pars=mbobs.meta['fit_pars']
+
+        nband=len(mbobs)
+        mofc=self['mof_2comp']
+        ppars=mofc['priors']
+        model=mofc['model']
+
+        T = fit_pars[4]
+        if model=='bdf':
+            fluxes = fit_pars[6:]
+        else:
+            fluxes = fit_pars[5:]
+
+        return TwoCompGuesser(
+            model,
+            T,
+            fluxes,
+            prior,
+            rng=self.rng,
+        )
+
+class TwoCompGuesser(ngmix.guessers.GuesserBase):
+    """
+    Make guesses from the input T, fluxes and prior for center
+    g is give a guess close to zero
+
+    parameters
+    ----------
+    T: float
+        Center for T guesses
+    fluxes: float or sequences
+        Center for flux guesses
+    prior:
+        cen, g drawn from this prior
+    scaling: string
+        'linear' or 'log'
+    """
+    def __init__(self, model, T, fluxes, prior, rng=None):
+        if rng is None:
+            rng=np.random.RandomState()
+
+        self.rng=rng
+
+        if np.isscalar(fluxes):
+            fluxes=np.array(fluxes, dtype='f8', ndmin=1)
+
+        self.model=model
+        self.T=T
+        self.fluxes=fluxes
+        self.prior=prior
+
+        self.g_halfwidth=0.02
+        self.flux_halfwidth=0.40
+        self.T_halfwidth=0.40
+
+    def __call__(self, **keys):
+        """
+        center, shape are just distributed around zero
+
+        if model is bdf, guess is also taken from prior
+        """
+        gw=self.g_halfwidth
+        Tw=self.T_halfwidth
+        Fw=self.flux_halfwidth
+
+        ur = self.rng.uniform
+        fluxes=self.fluxes
+
+        nband=fluxes.size
+
+        if self.model=='bdf':
+            np=6+nband
+            flux_start=6
+        else:
+            np=5+nband
+            flux_start=5
+
+        guess=self.prior.sample()
+        for i in range(2):
+
+            start = i*np
+            # over-write g guesses
+            guess[start+2],guess[start+3] = ur(low=-gw,high=gw,size=2)
+
+            # over-write T guesses
+            guess[start+4] = self.T*(1.0 + ur(low=-Tw,high=Tw))
+
+            # over-write F guesses
+            for band in range(nband):
+                guess[start+flux_start+band] = fluxes[band]*(1.0 + ur(low=-Fw,high=Fw))
+
+        self._fix_guess(guess, self.prior)
+
+        return guess
+
+    def _fix_guess(self, guess, prior, ntry=4):
+        """
+        just fix T and flux
+        """
+
+        n=guess.shape[0]
+        for itry in range(ntry):
+            try:
+                lnp=prior.get_lnprob_scalar(guess)
+
+                if lnp <= ngmix.priors.LOWVAL:
+                    dosample=True
+                else:
+                    dosample=False
+            except GMixRangeError as err:
+                dosample=True
+
+            if dosample:
+                print_pars(guess, front="bad guess:")
+                if itry < ntry:
+                    tguess = prior.sample()
+                    guess[4:] = tguess[4:]
+                else:
+                    # give up and just drawn a sample
+                    guess = prior.sample()
+            else:
+                break
+
+
+
+class Metacal2CompBootstrapper(object):
+    """
+    fit psfs and MOF
+    """
+    def __init__(self,
+                 mbobs,
+                 mof_conf,
+                 prior,
+                 guesser,
+                 metacal_pars=None):
+
+        self.mbobs=mbobs
+
+        # includes psf and model fitting info
+        self.mof_conf=mof_conf
+
+        self.prior=prior
+        self.guesser=guesser
+
+        self._set_metacal_pars(metacal_pars)
+
+
+    def go(self):
+        """
+        fit psfs and galaxy models for the sheared versions
+        """
+        odict=ngmix.metacal.get_all_metacal(
+            self.mbobs,
+            **self.metacal_pars
+        )
+
+        res={'mcal_flags':0}
+        for key,mbobs in odict.items():
+            tres = self._run_mof(mbobs)
+            res[key] = tres
+            res['mcal_flags'] |= tres['flags']
+
+        self.metacal_result=res
+
+    def get_metacal_result(self):
+        return self.metacal_result
+
+    def _run_mof(self, mbobs):
+        n_components=2
+        assert len(mbobs)==1,'not dealing with all bands in gmix checks etc.'
+
+        try:
+            _fit_all_psfs([mbobs], self.mof_conf['psf'])
+
+            fitter = mof.MOF(
+                mbobs,
+                self.mof_conf['model'],
+                n_components,
+                prior=self.prior,
+            )
+
+            for i in range(self.mof_conf['ntry']):
+                guess=self.guesser()
+                fitter.go(guess)
+
+                res=fitter.get_result()
+                if res['flags']==0:
+                    try:
+                        gm = fitter.get_gmix(band=0)
+                        g1,g2,T=gm.get_g1g2T()
+                    except ngmix.GMixRangeError as err:
+                        logger.info(str(err))
+                        res['flags']=1
+
+                    if res['flags']==0:
+                        break
+
+        except BootPSFFailure as err:
+            print(str(err))
+            res={'flags':1}
+
+        if res['flags'] != 0:
+            fitter=None
+            data=None
+        else:
+            res = self._get_mof_output(mbobs, fitter, gm)
+
+        return res
+
+    def _get_mof_output(self, mbobs, fitter, gm):
+        """
+        add the combined ellipticity and T etc.
+        """
+        
+        res=fitter.get_result()
+
+        # don't care about band here, we are interested in the
+        # structural parameters only
+        #print('gm:')
+        #print(gm)
+
+        # this will properly account for offsets between
+        # components
+        g1,g2,T=gm.get_g1g2T()
+
+        res['g'] = (g1,g2)
+        res['T'] = T
+        res['gpsf'], res['Tpsf'] = self._get_psf_stats(mbobs) 
+
+        return res
+
+    def _get_psf_stats(self, mbobs):
+        wsum     = 0.0
+        Tpsf_sum = 0.0
+        gpsf_sum = np.zeros(2)
+        for obslist in mbobs:
+            for obs in obslist:
+                g1,g2,T=obs.psf.gmix.get_g1g2T()
+
+                twsum = obs.weight.sum()
+
+                wsum += twsum
+                gpsf_sum[0] += g1*twsum
+                gpsf_sum[1] += g2*twsum
+                Tpsf_sum += T*twsum
+
+        g = gpsf_sum/wsum
+        T = Tpsf_sum/wsum
+
+        return g,T
+
+
+    def _set_metacal_pars(self, metacal_pars_in):
+        """
+        make sure at least the step is specified
+        """
+        metacal_pars={
+            'types':['noshear','1p','1m','2p','2m'],
+        }
+
+        if metacal_pars_in is not None:
+            metacal_pars.update(metacal_pars_in)
+
+        self.metacal_pars=metacal_pars
 
 
 

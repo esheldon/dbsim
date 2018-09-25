@@ -967,7 +967,7 @@ def get_fitter(sim_conf, fit_conf, fitrng):
     else:
         nband=sim_conf['nband']
 
-    if fit_conf['fitter'] in ['metacal','metacal-avg']:
+    if fit_conf['fitter'] in ['metacal','metacal-avg','metacal-2comp']:
         if fit_conf['fofs']['find_fofs']:
             mof_fitter = MOFFitter(fit_conf, nband, fitrng)
         else:
@@ -975,6 +975,8 @@ def get_fitter(sim_conf, fit_conf, fitrng):
 
         if fit_conf['fitter'] == 'metacal-avg':
             cls = fitters.MetacalAvgFitter
+        elif fit_conf['fitter'] == 'metacal-2comp':
+            cls = fitters.Metacal2CompFitter
         else:
             cls = fitters.MetacalFitter
 
