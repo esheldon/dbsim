@@ -793,49 +793,64 @@ def do_fits(sim,
     fof_conf=fit_conf['fofs']
     weight_type=fit_conf['weight_type']
 
-    if fof_conf['find_fofs']:
-        logger.debug('extracting and finding fofs')
-        if fof_conf.get('link_all',False):
+    if fof_conf.get('merge_fofs',False):
+        # currently just take the brightest, thinking of the
+        # two object case, but we can make this more
+        # sophisticated later using the actual fof groups
+        mbobs_list = sim.get_mbobs_list(
+            weight_type=weight_type,
+        )
+        if len(mbobs_list) > 0:
+            # always do this to center stamp
+            mbobs_list = extract_single_obs(sim, mbobs_list)
+
+    else:
+        if fof_conf['find_fofs']:
+            logger.debug('extracting and finding fofs')
+
+
+            if fof_conf.get('link_all',False):
+                mbobs_list = sim.get_mbobs_list(
+                    cat=cat,
+                    seg=seg,
+                    obs=obs,
+                    weight_type=weight_type,
+                )
+                mbobs_list = [mbobs_list]
+            else:
+                mbobs_list = sim.get_fofs(
+                    fof_conf,
+                    cat=cat,
+                    seg=seg,
+                    obs=obs,
+                    weight_type=weight_type,
+                    show=show,
+                )
+
+            for fof_id,tmbobs_list in enumerate(mbobs_list):
+                for mbobs in tmbobs_list:
+                    mbobs.meta['image_id'] = image_id
+                    mbobs.meta['fof_id'] = fof_id
+                    #for obslist in mbobs:
+                    #    for obs in obslist:
+                    #        obs.meta['image_id'] = image_id
+                    #        obs.meta['fof_id'] = fof_id
+
+        else:
+            logger.debug('extracting')
             mbobs_list = sim.get_mbobs_list(
                 cat=cat,
                 seg=seg,
                 obs=obs,
                 weight_type=weight_type,
             )
-            mbobs_list = [mbobs_list]
-        else:
-            mbobs_list = sim.get_fofs(
-                fof_conf,
-                cat=cat,
-                seg=seg,
-                obs=obs,
-                weight_type=weight_type,
-                show=show,
-            )
-
-        for fof_id,tmbobs_list in enumerate(mbobs_list):
-            for mbobs in tmbobs_list:
+            for fof_id,mbobs in enumerate(mbobs_list):
                 mbobs.meta['image_id'] = image_id
                 mbobs.meta['fof_id'] = fof_id
                 #for obslist in mbobs:
                 #    for obs in obslist:
                 #        obs.meta['image_id'] = image_id
                 #        obs.meta['fof_id'] = fof_id
-    else:
-        logger.debug('extracting')
-        mbobs_list = sim.get_mbobs_list(
-            cat=cat,
-            seg=seg,
-            obs=obs,
-            weight_type=weight_type,
-        )
-        for fof_id,mbobs in enumerate(mbobs_list):
-            mbobs.meta['image_id'] = image_id
-            mbobs.meta['fof_id'] = fof_id
-            #for obslist in mbobs:
-            #    for obs in obslist:
-            #        obs.meta['image_id'] = image_id
-            #        obs.meta['fof_id'] = fof_id
 
     if len(mbobs_list)==0:
         reslist=None
@@ -865,6 +880,114 @@ def do_fits(sim,
         logger.debug("    processed %d objects" % nobj)
 
     return reslist, nobj, tm_fit
+
+def extract_single_obs(sim, mbobs_list):
+    assert len(mbobs_list[0])==1,'one band for now'
+
+    box_size = max( [max(m[0][0].image.shape) for m in mbobs_list] )
+    half_box_size = box_size//2
+
+    # get the mean position
+    flux = np.array( [m[0][0].meta['flux'] for m in mbobs_list] )
+    rows = np.array( [m[0][0].meta['orig_row'] for m in mbobs_list] )
+    cols = np.array( [m[0][0].meta['orig_col'] for m in mbobs_list] )
+    flux_sum=flux.sum()
+    if flux_sum == 0.0:
+        logger.info('zero flux')
+        return []
+
+    mean_row = (rows*flux).sum()/flux.sum()
+    mean_col = (cols*flux).sum()/flux.sum()
+    print('rows:',rows,'row mean:',mean_row)
+    print('cols:',cols,'col mean:',mean_col)
+
+    imax = flux.argmax()
+    mbobs_imax=mbobs_list[imax]
+
+    # again assuming single band
+    obs=sim.obs[0][0].copy()
+    #obs.meta.update(mbobs_list[0][0][0].meta)
+    maxrow,maxcol=obs.image.shape
+
+
+    # now get the adaptive moments center
+    j=obs.jacobian
+    j.set_cen(row=mean_row, col=mean_col)
+    obs.jacobian=j
+
+    shiftmax=3.0 # arcsec
+    Tguess=4.0*j.scale**2
+    runner=ngmix.bootstrap.EMRunner(obs, Tguess, 1, {'maxiter':1000,'tol':1.0e-4})
+    runner.go(ntry=2)
+    fitter=runner.fitter
+    res=fitter.get_result()
+        #try:
+        #    fitter=ngmix.admom.run_admom(obs, Tguess, shiftmax=shiftmax)
+        #    res=fitter.get_result()
+        #except ngmix.GMixRangeError as err:
+        #    res={'flags':2}
+            
+        #if res['flags']==0:
+        #    break
+
+    if res['flags'] != 0:
+        print("    could not fit for center",res)
+        return []
+
+    gm=fitter.get_gmix()
+    v,u = gm.get_cen()
+
+    newrow, newcol = j.get_rowcol(v, u)
+    print("new cen:",newrow,newcol)
+
+    start_row = int(newrow) - half_box_size + 1
+    start_col = int(newcol) - half_box_size + 1
+    end_row   = int(newrow) + half_box_size + 1 # plus one for slices
+    end_col   = int(newcol) + half_box_size + 1
+
+    if start_row < 0:
+        start_row=0
+    if start_col < 0:
+        start_col=0
+    if start_row > maxrow:
+        start_row=maxrow
+    if start_col > maxcol:
+        start_col=maxcol
+
+    cutout_row = newrow - start_row
+    cutout_col = newcol - start_col
+
+
+    im = obs.image[
+        start_row:end_row,
+        start_col:end_col,
+    ]
+    wt = obs.weight[
+        start_row:end_row,
+        start_col:end_col,
+    ]
+
+    j=obs.jacobian
+    j.set_cen(row=cutout_row, col=cutout_col)
+
+    nobs=ngmix.Observation(
+        im,
+        weight=wt,
+        jacobian=j,
+        bmask=np.zeros(im.shape,dtype='i4'),
+        meta=mbobs_list[0][0][0].meta,
+        psf=obs.psf.copy(),
+    )
+
+
+    mbobs = ngmix.MultiBandObsList()
+    obslist=ngmix.ObsList()
+
+    obslist.append(nobs)
+    mbobs.append(obslist)
+
+
+    return [mbobs]
 
 def run_fofs(fitter, fof_mbobs_lists):
     """
