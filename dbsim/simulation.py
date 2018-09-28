@@ -346,9 +346,11 @@ class Sim(dict):
     '''
 
     def _make_g_pdf(self):
-        c=self['pdfs']['g']
-        rng=self.rng
-        return ngmix.priors.GPriorBA(c['sigma'], rng=rng)
+        if 'g' in self['pdfs']:
+            c=self['pdfs']['g']
+            return ngmix.priors.GPriorBA(c['sigma'], rng=self.rng)
+        else:
+            return None
 
     def _make_hlr_pdf(self):
         c=self['pdfs']['hlr']
@@ -594,7 +596,10 @@ class Sim(dict):
 
         disk_hlr = hlr
 
-        disk_g1,disk_g2 = self.g_pdf.sample2d()
+        if self.g_pdf is None:
+            disk_g1,disk_g2 = 0.0, 0.0
+        else:
+            disk_g1,disk_g2 = self.g_pdf.sample2d()
 
 
         all_obj={}
