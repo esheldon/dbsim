@@ -1,5 +1,6 @@
 import logging
 import numpy as np
+from numpy import array
 from pprint import pprint
 
 import esutil as eu
@@ -519,14 +520,17 @@ class MetacalFitter(FitterBase):
             if self._check_flags(mbobs):
                 try:
                     boot=self._do_one_metacal(mbobs)
-                    res=boot.get_metacal_result()
+                    if isinstance(boot,dict):
+                        res=boot
+                    else:
+                        res=boot.get_metacal_result()
                 except (BootPSFFailure, BootGalFailure) as err:
                     logger.debug(str(err))
                     res={'mcal_flags':1}
-                except RuntimeError as err:
-                    # argh galsim and its generic errors
-                    logger.info('caught RuntimeError: %s' % str(err))
-                    res={'mcal_flags':1}
+                #except RuntimeError as err:
+                #    # argh galsim and its generic errors
+                #    logger.info('caught RuntimeError: %s' % str(err))
+                #    res={'mcal_flags':1}
 
                 if res['mcal_flags'] != 0:
                     logger.debug("        metacal fit failed")
@@ -1700,3 +1704,443 @@ def _fit_one_psf(obs, pconf):
         obs.set_gmix(gmix)
     else:
         raise BootPSFFailure("failed to fit psfs: %s" % str(res))
+
+class EMMetacalFitter(MetacalFitter):
+
+    def _do_one_metacal(self, mbobs):
+        res={'mcal_flags':0}
+
+        assert len(mbobs)==1
+        assert len(mbobs[0])==1
+        obs=mbobs[0][0]
+
+        # first do a fit to the original, which will be used as
+        # a guess for the others
+        boot=self._do_one_fit(obs)
+        gmix_guess = boot.get_fitter().get_gmix()
+
+        mpars=self['metacal']['metacal_pars']
+        odict=ngmix.metacal.get_all_metacal(
+            obs,
+            rng=self.rng,
+            **mpars
+        )
+
+        for key,tobs in odict.items():
+            tboot = self._do_one_fit(tobs, gmix_guess=gmix_guess)
+            res[key]=tboot.get_fitter().get_result()
+
+        return res
+
+    def _do_one_fit(self, obs, gmix_guess=None):
+        pconf=self['metacal']['psf']
+        oconf=self['metacal']['obj']
+
+        psf_Tguess = 4.0*obs.jacobian.scale**2
+        psf_runner=EMPSFRunner(
+            obs.psf,
+            psf_Tguess,
+            pconf['ngauss'],
+            pconf['em_pars'],
+            ntry=pconf['ntry'],
+            clip=pconf.get('clip',False),
+        )
+
+        obj_Tguess = 5.0*obs.jacobian.scale**2
+        runner=EMRunner(
+        #runner=EMPSFRunner(
+            obs,
+            obj_Tguess,
+            oconf['ngauss'],
+            oconf['em_pars'],
+            ntry=oconf['ntry'],
+            clip=oconf.get('clip',True),
+        )
+
+        boot=EMBootstrapper(runner, psf_runner=psf_runner)
+        boot.go(gmix_guess=gmix_guess)
+        return boot
+
+
+class EMBootstrapper(object):
+    def __init__(self, runner, psf_runner=None):
+        """
+        run EM.  Currently the total gmix is used to calculate
+        g, s2n etc. We can open this up to splitting them
+
+        parameters
+        ----------
+        obs: ngmix Observation
+            The observation to fit
+        runner: e.g. a EMRunner
+            For fitting the primary observation
+        psf_runner: optional, e.g. EMPSFRunner
+            runner for fitting psf objservations in obs.psf
+        """
+
+        self.runner=runner
+        self.psf_runner=psf_runner
+
+    def go(self, gmix_guess=None):
+        """
+        run the runners
+        """
+        if self.psf_runner is not None:
+            self._fit_psf()
+
+        self._fit(gmix_guess=gmix_guess)
+
+    def get_result(self):
+        """
+        get the result dict
+        """
+        return self.get_fitter().get_result()
+
+    def get_fitter(self):
+        """
+        get the adaptive moments fitter
+        """
+        if not hasattr(self,'fitter'):
+            raise RuntimeError("you need to run fit() successfully first")
+        return self.fitter
+
+    def _fit(self, gmix_guess=None):
+        """
+        pars controlling the EM fits are given on construction
+        """
+        self.runner.go(guess=gmix_guess)
+
+        fitter=self.runner.get_fitter()
+        res=fitter.get_result()
+
+        if res['flags'] != 0:
+            raise BootGalFailure("object fit failed")
+
+        self.fitter=fitter
+        self._set_stats()
+
+    def _set_stats(self):
+        """
+        add some statistics to the fitter result dict
+        """
+
+        res=self.fitter.get_result()
+        gmix=self.fitter.get_gmix()
+
+        g1,g2,T=gmix.get_g1g2T()
+
+        obs_copy=self.runner.obs_orig.copy()
+        obs_copy.set_gmix(gmix)
+
+        tfitter=ngmix.fitting.TemplateFluxFitter(obs_copy)
+        tfitter.go()
+        tres=tfitter.get_result()
+
+        # note original does not have flux set so we can
+        # use it for guesses
+        gmix.set_flux(tres['flux'])
+
+        res['s2n'] = gmix.get_model_s2n(obs_copy)
+        res['T'] = T
+        res['g'] = (g1,g2)
+        res['flux'] = tres['flux']
+        res['flux_err'] = tres['flux_err']
+        res['pars'] = gmix.get_full_pars()
+
+        #logger.debug('    flux s2n: %g' % (res['flux']/res['flux_err']))
+        logger.debug('    s2n: %g' % res['s2n'])
+
+        if self.psf_runner is not None:
+            pg1,pg2,pT = self.psf_runner.obs.gmix.get_g1g2T()
+            #res['psf_g'] = (pg1, pg2)
+            #res['psf_T'] = pT
+            res['gpsf'] = (pg1, pg2)
+            res['Tpsf'] = pT
+
+    def _fit_psf(self):
+        """
+        Fit the psf observation
+        """
+
+        self.psf_runner.go()
+        fitter=self.psf_runner.get_fitter()
+        res=fitter.get_result()
+        if res['flags'] != 0:
+            raise BootPSFFailure("psf fit failed")
+
+        gmix=fitter.get_gmix()
+        gmix.set_flux(1.0)
+
+        # if psf runner obs is the same as the runner obs.psf then
+        # this will propagate
+        self.psf_runner.obs.set_gmix(gmix)
+
+    def _set_s2n(self, mb_obs_list, fitter):
+        """
+        do flux in each band separately
+        """
+
+        # for each band
+        nband = len(mb_obs_list)
+        res=fitter.get_result()
+        res['flux'] = zeros(nband) - 9999
+        res['flux_err'] = zeros(nband) + 9999
+        res['flux_s2n'] = zeros(nband) - 9999
+
+        try:
+            gmix=fitter.get_gmix()
+
+            for band,obs_list in enumerate(mb_obs_list):
+                for obs in obs_list:
+                    obs.set_gmix(gmix)
+
+                flux_fitter=fitting.TemplateFluxFitter(obs_list)
+                flux_fitter.go()
+
+                fres=flux_fitter.get_result()
+                if fres['flags'] != 0:
+                    res['flags'] = fres
+                    raise BootPSFFailure("could not get flux")
+
+                res['flux'][band]=fres['flux']
+                res['flux_err'][band]=fres['flux_err']
+
+                if fres['flux_err'] > 0:
+                    res['flux_s2n'][band]=fres['flux']/fres['flux_err']
+
+        except GMixRangeError as err:
+            raise BootPSFFailure(str(err))
+
+class EMRunner(object):
+    """
+    wrapper to generate guesses and run the psf fitter a few times
+    """
+    def __init__(self, obs, Tguess, ngauss, em_pars, ntry=2, clip=False, rng=None):
+        from functools import partial
+
+        if rng is None:
+            rng=np.random.RandomState()
+
+        self.rng=rng
+        self.ngauss = ngauss
+        self.Tguess = Tguess
+        self.sigma_guess = np.sqrt(Tguess/2.0)
+        self.ntry=ntry
+
+        self.set_obs(obs, clip=clip)
+
+        self.em_pars=em_pars
+
+    def set_obs(self, obsin, clip=False):
+        """
+        set a new observation with sky
+        """
+        assert isinstance(obsin,ngmix.Observation)
+
+        if clip:
+            im=obsin.image
+            sky = im.max()/1000.0
+            im_with_sky=im.clip(min=sky)
+        else:
+            im_with_sky, sky = ngmix.em.prep_image(obsin.image)
+
+        self.obs_orig = obsin
+        self.obs   = Observation(im_with_sky, jacobian=obsin.jacobian)
+        self.sky   = sky
+
+    def get_fitter(self):
+        """
+        get the GMixEM fitter
+        """
+        return self.fitter
+
+    def go(self, guess=None, ntry=1):
+        """
+        the first guess can be taken from the input guess= keyword
+        """
+
+        fitter=ngmix.em.GMixEM(self.obs)
+
+        for i in range(ntry):
+            if i==0 and guess is not None:
+                guess_i=guess
+                #print("using input gmix guess")
+                #print(guess_i)
+            else:
+                guess_i=self.get_guess()
+                #print("using generated gmix guess")
+                #print(guess_i)
+
+            fitter.go(guess_i, self.sky, **self.em_pars)
+
+            res=fitter.get_result()
+            if res['flags']==0:
+                break
+
+        res['ntry'] = i+1
+        self.fitter=fitter
+
+    def get_guess(self):
+        """
+        Guess for the EM algorithm
+        """
+
+        rng=self.rng
+
+        ngauss=self.ngauss
+        Tguess=self.Tguess
+        sigma=self.sigma_guess
+        nper=6
+        pars=np.zeros(ngauss*nper)
+
+
+        flux_frac = 1.0/ngauss
+        for i in range(ngauss):
+            start=i*nper
+
+            pars[start+0] = flux_frac*(1. + rng.uniform(low=-0.05, high=0.05))
+
+            # relative to the jacobian center. Use our Tguess->sigma as a way
+            # to distribute the positions
+            pars[start+1] = rng.normal(scale=sigma*0.5)
+            pars[start+2] = rng.normal(scale=sigma*0.5)
+
+            pars[start+3] = 0.5*Tguess*(1.0 + rng.uniform(low=-0.1, high=0.1))
+            pars[start+4] = Tguess*rng.uniform(low=-0.05, high=0.05)
+            pars[start+5] = 0.5*Tguess*(1.0 + rng.uniform(low=-0.1, high=0.1))
+
+        return ngmix.GMix(pars=pars)
+
+from ngmix.bootstrap import (
+    _em2_pguess, _em2_fguess,
+    _em3_pguess, _em3_fguess,
+    _em4_pguess, _em4_fguess,
+)
+
+class EMPSFRunner(EMRunner):
+    """
+    Runner for fitting a PSF with specialized guess generation
+    """
+
+    def get_guess(self):
+        """
+        Guess for the EM algorithm
+        """
+
+        if self.ngauss==1:
+            return self._get_em_guess_1gauss()
+        elif self.ngauss==2:
+            return self._get_em_guess_2gauss()
+        elif self.ngauss==3:
+            return self._get_em_guess_3gauss()
+        elif self.ngauss==4:
+            return self._get_em_guess_4gauss()
+        else:
+            raise ValueError("bad ngauss: %d" % self.ngauss)
+
+    def _get_em_guess_1gauss(self):
+        
+        ur=self.rng.uniform
+        sigma2 = self.sigma_guess**2
+        pars=[
+            1.0 + ur(low=-0.1, high=0.1),
+            ur(low=-0.1, high=0.1),
+            ur(low=-0.1, high=0.1),
+            sigma2*(1.0 + ur(low=-0.1, high=0.1)),
+            sigma2*ur(low=-0.2, high=0.2),
+            sigma2*(1.0 + ur(low=-0.1, high=0.1)),
+        ]
+
+        return ngmix.GMix(pars=pars)
+
+    def _get_em_guess_2gauss(self):
+
+        sigma2 = self.sigma_guess**2
+        ur=self.rng.uniform
+
+        pars=[
+            _em2_pguess[0],
+            ur(low=-0.1, high=0.1),
+            ur(low=-0.1, high=0.1),
+            _em2_fguess[0]*sigma2*(1.0 + ur(low=-0.1, high=0.1)),
+            0.0,
+            _em2_fguess[0]*sigma2*(1.0 + ur(low=-0.1, high=0.1)),
+
+            _em2_pguess[1],
+            ur(low=-0.1, high=0.1),
+            ur(low=-0.1, high=0.1),
+            _em2_fguess[1]*sigma2*(1.0 + ur(low=-0.1, high=0.1)),
+            0.0,
+            _em2_fguess[1]*sigma2*(1.0 + ur(low=-0.1, high=0.1)),
+        ]
+
+        return ngmix.GMix(pars=pars)
+
+    def _get_em_guess_3gauss(self):
+
+        sigma2 = self.sigma_guess**2
+        ur=self.rng.uniform
+
+        pars= [
+            _em3_pguess[0]*(1.0+ur(low=-0.1, high=0.1)),
+            ur(low=-0.1, high=0.1),
+            ur(low=-0.1, high=0.1),
+            _em3_fguess[0]*sigma2*(1.0 + ur(low=-0.1, high=0.1)),
+            ur(low=-0.01, high=0.01),
+            _em3_fguess[0]*sigma2*(1.0 + ur(low=-0.1, high=0.1)),
+
+            _em3_pguess[1]*(1.0+ur(low=-0.1, high=0.1)),
+            ur(low=-0.1, high=0.1),
+            ur(low=-0.1, high=0.1),
+            _em3_fguess[1]*sigma2*(1.0 + ur(low=-0.1, high=0.1)),
+            ur(low=-0.01, high=0.01),
+            _em3_fguess[1]*sigma2*(1.0 + ur(low=-0.1, high=0.1)),
+
+            _em3_pguess[2]*(1.0+ur(low=-0.1, high=0.1)),
+            ur(low=-0.1, high=0.1),
+            ur(low=-0.1, high=0.1),
+            _em3_fguess[2]*sigma2*(1.0 + ur(low=-0.1, high=0.1)),
+            ur(low=-0.01, high=0.01),
+            _em3_fguess[2]*sigma2*(1.0 + ur(low=-0.1, high=0.1)),
+        ]
+
+
+        return ngmix.GMix(pars=pars)
+
+    def _get_em_guess_4gauss(self):
+
+        sigma2 = self.sigma_guess**2
+        ur=self.rng.uniform
+
+        pars= [
+            _em4_pguess[0]*(1.0+ur(low=-0.1, high=0.1)),
+            ur(low=-0.1, high=0.1),
+            ur(low=-0.1, high=0.1),
+            _em4_fguess[0]*sigma2*(1.0 + ur(low=-0.1, high=0.1)),
+            ur(low=-0.01, high=0.01),
+            _em4_fguess[0]*sigma2*(1.0 + ur(low=-0.1, high=0.1)),
+
+            _em4_pguess[1]*(1.0+ur(low=-0.1, high=0.1)),
+            ur(low=-0.1, high=0.1),
+            ur(low=-0.1, high=0.1),
+            _em4_fguess[1]*sigma2*(1.0 + ur(low=-0.1, high=0.1)),
+            ur(low=-0.01, high=0.01),
+            _em4_fguess[1]*sigma2*(1.0 + ur(low=-0.1, high=0.1)),
+
+            _em4_pguess[2]*(1.0+ur(low=-0.1, high=0.1)),
+            ur(low=-0.1, high=0.1),
+            ur(low=-0.1, high=0.1),
+            _em4_fguess[2]*sigma2*(1.0 + ur(low=-0.1, high=0.1)),
+            ur(low=-0.01, high=0.01),
+            _em4_fguess[2]*sigma2*(1.0 + ur(low=-0.1, high=0.1)),
+
+            _em4_pguess[2]*(1.0+ur(low=-0.1, high=0.1)),
+            ur(low=-0.1, high=0.1),
+            ur(low=-0.1, high=0.1),
+            _em4_fguess[2]*sigma2*(1.0 + ur(low=-0.1, high=0.1)),
+            ur(low=-0.01, high=0.01),
+            _em4_fguess[2]*sigma2*(1.0 + ur(low=-0.1, high=0.1)),
+        ]
+
+        return ngmix.GMix(pars=pars)
+
