@@ -1954,14 +1954,14 @@ class EMRunner(object):
         """
         return self.fitter
 
-    def go(self, guess=None, ntry=1):
+    def go(self, guess=None):
         """
         the first guess can be taken from the input guess= keyword
         """
 
         fitter=ngmix.em.GMixEM(self.obs)
 
-        for i in range(ntry):
+        for i in range(self.ntry):
             if i==0 and guess is not None:
                 guess_i=guess
                 #print("using input gmix guess")

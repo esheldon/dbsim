@@ -358,6 +358,19 @@ class Summer(dict):
         sub-classes might make a pre-selection, e.g. of some flags
         """
         
+        w,=np.where(
+            np.isfinite(data['mcal_g'][:,0])
+            &
+            np.isfinite(data['mcal_g_1p'][:,0])
+            &
+            np.isfinite(data['mcal_g_1m'][:,0])
+            &
+            np.isfinite(data['mcal_g_2p'][:,0])
+            &
+            np.isfinite(data['mcal_g_2m'][:,0])
+        )
+        data=data[w]
+
         if self.args.preselect:
             print('pre-selecting')
             R11 = (data['mcal_g_1p'][:,0] - data['mcal_g_1m'][:,0])/0.02
