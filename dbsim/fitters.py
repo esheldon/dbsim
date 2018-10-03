@@ -1817,7 +1817,11 @@ class EMBootstrapper(object):
             raise BootGalFailure("object fit failed")
 
         self.fitter=fitter
-        self._set_stats()
+        try:
+            self._set_stats()
+        except GMixRangeError as err:
+            raise BootGalFailure("object fit failed: %s" % str(err))
+
 
     def _set_stats(self):
         """
