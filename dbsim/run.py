@@ -23,7 +23,9 @@ def go(sim_conf,
        seed,
        output_file,
        show=False,
-       make_plots=False):
+       make_plots=False,
+       #max_run_time_hours=1.0
+      ):
     """
     run the simulation and fitter
     """
@@ -82,7 +84,7 @@ def go(sim_conf,
 
         image_id=i
         if metad is not None and metad['dometa']:
-            resdict, nobj, tm = do_meta(sim, fit_conf, fitter, show=show)
+            resdict, nobj, tm = do_meta(sim, fit_conf, fitter, image_id, show=show)
             reslist=[resdict]
         else:
             reslist, nobj, tm = do_fits(
@@ -108,6 +110,10 @@ def go(sim_conf,
             if nobj > 0:
                 nfit += 1
 
+        #time_elapsed_hours=(time.time()-tm0_main)/3600.0
+        #if time_elapsed_hours > max_run_time_hours:
+        #    logger.info('stopping early to time limit: %g > %g' % (time_elapsed_hours,max_run_time_hours))
+        #    break
 
     elapsed_time=time.time()-tm0_main
     nkept = len(datalist)
@@ -137,7 +143,7 @@ def go(sim_conf,
             write_output(output_file, data, meta)
 
 
-def do_meta(sim, fit_conf, fitter, show=False):
+def do_meta(sim, fit_conf, fitter, image_id, show=False):
     """
     currently we only do the full version, making
     metacal images for the full image set and
@@ -146,7 +152,7 @@ def do_meta(sim, fit_conf, fitter, show=False):
     mtype=fit_conf['meta']['type']
     fit_conf['meta']['dosim'] = fit_conf['meta'].get('dosim',False)
     if mtype=='meta-detect':
-        tup = do_meta_detect(sim, fit_conf, fitter, show=show)
+        tup = do_meta_detect(sim, fit_conf, fitter, image_id, show=show)
     elif mtype in ['meta-mof','meta-max']:
         if fit_conf['fitter']=='mof-full':
             if fit_conf['meta']['dosim']:
@@ -160,7 +166,7 @@ def do_meta(sim, fit_conf, fitter, show=False):
     
     return tup
 
-def do_meta_detect(sim, fit_conf, fitter, show=False):
+def do_meta_detect(sim, fit_conf, fitter, image_id, show=False):
     """
     metacal the entire process, including detection.
     This means you lose a lot of detections
@@ -185,6 +191,7 @@ def do_meta_detect(sim, fit_conf, fitter, show=False):
             sim,
             fit_conf,
             fitter,
+            image_id,
             obs=odict[key],
             show=show,
         )

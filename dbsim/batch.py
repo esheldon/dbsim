@@ -300,8 +300,9 @@ def get_command():
     return cmd
 
 class MakerBase(dict):
-    def __init__(self, conf):
+    def __init__(self, conf, missing=False):
         self.update(conf)
+        self.missing=missing
 
         if 'seed' in conf:
             seed=conf['seed']
@@ -354,9 +355,11 @@ class MakerBase(dict):
             ntrials_tot += ntrials_per
             output = files.get_output_url(self['run'], isplit)
 
+            if self.missing and os.path.exists(output):
+                continue
 
             logfile = output.replace('.fits','.log')
-            job_name='%s-%05d' % (overall_name,isplit)
+            job_name='%s-%06d' % (overall_name,isplit)
 
             self['output'] = output
             self['logfile'] = logfile
@@ -614,8 +617,8 @@ class CondorMaker(MakerBase):
             ntrials_tot += ntrials_per
             output = files.get_output_url(self['run'], isplit)
 
-            do_write=True
-
+            if self.missing and os.path.exists(output):
+                continue
 
             if (njobs % self['jobs_per_condor_sub'])==0:
 

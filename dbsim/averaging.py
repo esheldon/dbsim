@@ -1359,6 +1359,9 @@ def mpi_do_all_sums_ext(fit_conf, fname, select=None):
 
                 data = fits[type][:]
 
+                if len(data)==0:
+                    raise IOError("empty data")
+
                 res=mpi_do_sums_ext(
                     fit_conf,
                     data,
