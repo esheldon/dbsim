@@ -62,7 +62,7 @@ _lsf_template="""#!/bin/bash
 #BSUB -J %(job_name)s
 #BSUB -n 1
 #BSUB -oo ./%(job_name)s.oe
-#BSUB -W 12:00
+#BSUB -W 36:00
 #BSUB -R "linux64 && rhel60 && scratch > 2"
 
 echo "working on host: $(hostname)"
@@ -74,7 +74,7 @@ output="%(output)s"
 logfile="%(logfile)s"
 seed=%(seed)s
 
-${command} ${ntrials} ${output} ${logfile} ${seed}
+${command} ${ntrials} ${seed} ${output} ${logfile}
 """
 
 
@@ -84,8 +84,7 @@ function runsim {
     echo "host: $(hostname)"
     echo "will write to file: $output"
 
-    command=%(command)s
-    ${command} --seed ${seed} ${run} ${ntrials} ${output}
+    dbsim-run ${sim_config} ${fit_config} ${ntrials} ${seed} ${output}
     status=$?
 
     echo "time: $SECONDS"
@@ -100,11 +99,12 @@ function runsim {
 export OMP_NUM_THREADS=1
 
 ntrials=$1
-output=$2
-logfile=$3
-seed=$4
+seed=$2
+output=$3
+logfile=$4
 
-run=%(run)s
+sim_config=%(sim_config)s
+fit_config=%(fit_config)s
 
 tmpdir="/scratch/esheldon/${LSB_JOBID}"
 mkdir -p ${tmpdir}
