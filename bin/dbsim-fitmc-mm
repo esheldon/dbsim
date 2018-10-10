@@ -20,6 +20,10 @@ parser.add_argument('--select',default=None,
 parser.add_argument('--nsigma',default=3.0,type=float,
                     help='number sigma error bars to print')
 
+parser.add_argument(
+    '--Rmatrix',action='store_true',
+    help='use a full R matrix',
+)
 def add_sums(sums, tsums):
     for n in sums.dtype.names:
         sums[n] += tsums[n]
@@ -46,7 +50,7 @@ def main():
         else:
             add_sums(sums, tsums)
 
-    st = dbsim.averaging.mpi_average_shear(sums)
+    st = dbsim.averaging.mpi_average_shear(sums,Rmatrix=args.Rmatrix)
     st['shear_true'] = simc['shear']
     mcfits = dbsim.averaging.get_m_c_oneshear(st, nsig=args.nsigma)
 

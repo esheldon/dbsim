@@ -1407,10 +1407,12 @@ def mpi_do_all_sums(fname, select=None):
     return output
 
 
-def mpi_average_shear(sums, verbose=True, prefix=None):
-    dt=[
-        #('R','f8', 2),
-        ('R','f8', (2,2)),
+def mpi_average_shear(sums, verbose=True, prefix=None, Rmatrix=True):
+    if Rmatrix:
+        dt = [('R','f8', (2,2))]
+    else:
+        dt = [('R','f8', 2)]
+    dt += [
         ('shear','f8',2),
         ('shear_err','f8',2),
         ('shear_true','f8',2),
@@ -1440,19 +1442,21 @@ def mpi_average_shear(sums, verbose=True, prefix=None):
         g2p_mean = st['g_'+prefix+'_2p']/st['wsum_'+prefix+'_2p']
         g2m_mean = st['g_'+prefix+'_2m']/st['wsum_'+prefix+'_2m']
 
-    #st['R'][0] = (g1p_mean[0] - g1m_mean[0])/0.02
-    #st['R'][1] = (g2p_mean[1] - g2m_mean[1])/0.02
-    st['R'][0,0] = (g1p_mean[0] - g1m_mean[0])/0.02
-    st['R'][0,1] = (g1p_mean[1] - g1m_mean[1])/0.02
-    st['R'][1,0] = (g2p_mean[0] - g2m_mean[0])/0.02
-    st['R'][1,1] = (g2p_mean[1] - g2m_mean[1])/0.02
+    if Rmatrix:
+        st['R'][0,0] = (g1p_mean[0] - g1m_mean[0])/0.02
+        st['R'][0,1] = (g1p_mean[1] - g1m_mean[1])/0.02
+        st['R'][1,0] = (g2p_mean[0] - g2m_mean[0])/0.02
+        st['R'][1,1] = (g2p_mean[1] - g2m_mean[1])/0.02
+        Rinv=np.linalg.inv(st['R'])
+        st['shear'] = np.dot(Rinv, g_mean)
+        st['shear_err'] = np.dot(Rinv,g_err)
 
-    Rinv=np.linalg.inv(st['R'])
+    else:
+        st['R'][0] = (g1p_mean[0] - g1m_mean[0])/0.02
+        st['R'][1] = (g2p_mean[1] - g2m_mean[1])/0.02
 
-    #st['shear'] = g_mean/st['R']
-    #st['shear_err'] = g_err/st['R']
-    st['shear'] = np.dot(Rinv, g_mean)
-    st['shear_err'] = np.dot(Rinv,g_err)
+        st['shear'] = g_mean/st['R']
+        st['shear_err'] = g_err/st['R']
 
     if verbose:
         print('num:',int(st['wsum'][0]))
