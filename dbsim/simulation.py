@@ -710,7 +710,7 @@ class Sim(dict):
                     dy=obj_parts['cen'][0],
                 )
 
-                if shear is not None:
+                if shear is not None and not self['shear_all']:
                     obj = obj.shear(
                         g1=shear[0],
                         g2=shear[1],
@@ -727,12 +727,11 @@ class Sim(dict):
 
             objects = galsim.Sum(objects)
 
-            #shear=self.get('shear',None)
-            #if shear is not None:
-            #    objects = objects.shear(
-            #        g1=shear[0],
-            #        g2=shear[1],
-            #    )
+            if shear is not None and self['shear_all']:
+                objects = objects.shear(
+                    g1=shear[0],
+                    g2=shear[1],
+                )
 
             convolved_objects = galsim.Convolve(objects, self.psf)
 
