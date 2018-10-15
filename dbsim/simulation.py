@@ -457,7 +457,7 @@ class Sim(dict):
                     c['sigma'],
                     rng=rng,
                 )
-            elif c['type']=='flat':
+            elif c['type'] in ['uniform','flat']:
                 pdf = ngmix.priors.FlatPrior(
                     c['range'][0],
                     c['range'][1],
