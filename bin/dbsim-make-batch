@@ -7,6 +7,7 @@ parser=ArgumentParser(__doc__)
 
 parser.add_argument('run',help="run identifier")
 parser.add_argument('system',help="batch system")
+parser.add_argument('--missing',action='store_true')
 
 def main():
     args=parser.parse_args()
@@ -15,13 +16,13 @@ def main():
     run_config['run'] = args.run
 
     if args.system=='wq':
-        maker=dbsim.batch.WQMaker(run_config)
+        maker=dbsim.batch.WQMaker(run_config, missing=args.missing)
     elif args.system=='lsf':
-        maker=dbsim.batch.LSFMaker(run_config)
+        maker=dbsim.batch.LSFMaker(run_config, missing=args.missing)
     elif args.system=='nersc':
-        maker=dbsim.batch.SLRMakerShifter(run_config)
+        maker=dbsim.batch.SLRMakerShifter(run_config, missing=args.missing)
     elif args.system=='condor':
-        maker=dbsim.batch.CondorMaker(run_config)
+        maker=dbsim.batch.CondorMaker(run_config, missing=args.missing)
     else:
         raise ValueError("bad queue system: '%s'" % args.system)
 

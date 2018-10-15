@@ -422,7 +422,7 @@ class WQMaker(MakerBase):
         return _wq_template % self
 
     def get_job_url(self, filenum):
-        job_url=files.get_wq_job_url(self['run'], filenum )
+        job_url=files.get_wq_job_url(self['run'], filenum, missing=self.missing )
         return job_url
 
 class LSFMaker(MakerBase):
@@ -444,7 +444,7 @@ class LSFMaker(MakerBase):
         return _lsf_template % self
 
     def get_job_url(self, filenum):
-        job_url=files.get_lsf_job_url(self['run'], filenum)
+        job_url=files.get_lsf_job_url(self['run'], filenum, missing=self.missing)
         return job_url
 
 
@@ -471,6 +471,7 @@ class SLRMaker(MakerBase):
         job_url=files.get_slr_job_url(
             self['run'],
             filenum,
+            missing=self.missing,
         )
         return job_url
 

@@ -127,7 +127,7 @@ def get_lsf_dir(run):
     dir=os.path.join(dir, 'lsf')
     return dir
 
-def get_lsf_job_url(run, filenum):
+def get_lsf_job_url(run, filenum, missing=False):
     """
     path to lsf submit script
     """
@@ -137,6 +137,9 @@ def get_lsf_job_url(run, filenum):
         'run':run,
         'filenum':filenum,
     }
+    if missing:
+        fname=fname.replace('.lsf','-missing.lsf')
+
     return os.path.join(d,fname)
 
 
