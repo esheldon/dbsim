@@ -314,6 +314,9 @@ class MakerBase(dict):
         self['sim_config'] = files.get_config_file(self['sim'])
         self['fit_config'] = files.get_config_file(self['fit'])
 
+        assert os.path.exists(self['sim_config'])
+        assert os.path.exists(self['fit_config'])
+
     def go(self):
         self.make_some_dirs()
         self.write_master()
