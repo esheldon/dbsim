@@ -41,6 +41,8 @@ def main():
     simc = dbsim.files.read_config_file(conf['sim'])
     fitc = dbsim.files.read_config_file(conf['fit'])
 
+    sums=dbsim.averaging.load_sums(runs, args.select)
+    """
     for i,run in enumerate(runs):
         sums_file=dbsim.files.get_sums_url(run, extra=args.select)
         print('reading:',sums_file)
@@ -49,6 +51,7 @@ def main():
             sums=tsums
         else:
             add_sums(sums, tsums)
+    """
 
     st = dbsim.averaging.mpi_average_shear(sums,Rmatrix=args.Rmatrix)
     st['shear_true'] = simc['shear']

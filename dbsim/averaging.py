@@ -1406,6 +1406,22 @@ def mpi_do_all_sums(fname, select=None):
 
     return output
 
+def load_sums(runs, select):
+    if 'runs' in runs:
+        rd=files.read_config_file(runs)
+        runs=rd['runs']
+
+    for i,run in enumerate(runs):
+        sums_file=files.get_sums_url(run, extra=select)
+        print('reading:',sums_file)
+        tsums = fitsio.read(sums_file)
+        if i==0:
+            sums=tsums
+        else:
+            for n in sums.dtype.names:
+                sums[n] += tsums[n]
+
+    return sums
 
 def mpi_average_shear(sums, verbose=True, prefix=None, Rmatrix=True):
     if Rmatrix:
