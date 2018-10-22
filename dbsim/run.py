@@ -171,9 +171,13 @@ def do_meta_detect(sim, fit_conf, fitter, image_id, show=False):
     metacal the entire process, including detection.
     This means you lose a lot of detections
     """
-    metacal_pars=fit_conf['metacal']['metacal_pars']
+    metaconf=fit_conf['metacal']
+    metacal_pars=metaconf['metacal_pars']
     if metacal_pars.get('symmetrize_psf',False):
-        fitters._fit_all_psfs([sim.obs], fit_conf['mof']['psf'])
+        if 'psf' in metaconf:
+            fitters._fit_all_psfs([sim.obs], metaconf['psf'])
+        else:
+            fitters._fit_all_psfs([sim.obs], fit_conf['mof']['psf'])
 
     # Note using the simulation rng here not the fitting
     # rng
