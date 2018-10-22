@@ -1275,6 +1275,8 @@ def mpi_do_sums_ext(fit_conf, data, select=None):
 
     if 'max' in fit_conf:
         model=fit_conf['max']['model']
+    elif fit_conf['fitter']=='mom':
+        model='wmom'
     else:
         model=fit_conf['mof']['model']
 
@@ -1311,9 +1313,9 @@ def mpi_do_sums(data, type, select=None):
 
     if select is not None:
         s2n=data[n('s2n')]
-        f=data[n('flux')]
-        fe=data[n('flux_err')]
-        flux_s2n = np.sqrt( ( (f/fe)**2 ).sum(axis=1) )
+        #f=data[n('flux')]
+        #fe=data[n('flux_err')]
+        #flux_s2n = np.sqrt( ( (f/fe)**2 ).sum(axis=1) )
         Tratio=data[n('T_ratio')]
 
         logic=eval(select)

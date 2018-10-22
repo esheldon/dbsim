@@ -160,7 +160,7 @@ def do_meta(sim, fit_conf, fitter, image_id, show=False):
             else:
                 tup = do_meta_mof_full(sim, fit_conf, fitter, show=show)
         else:
-            tup = do_meta_mof(sim, fit_conf, fitter, show=show)
+            tup = do_meta_mof(sim, fit_conf, fitter, image_id, show=show)
     else:
         raise ValueError("bad meta type: '%s'" % mtype)
     
@@ -201,7 +201,7 @@ def do_meta_detect(sim, fit_conf, fitter, image_id, show=False):
 
     return reslists, nobj, tm_fit
 
-def do_meta_mof(sim, fit_conf, fitter, show=False):
+def do_meta_mof(sim, fit_conf, fitter, image_id, show=False):
     """
     metacal the MOF process but not detection
 
@@ -236,6 +236,7 @@ def do_meta_mof(sim, fit_conf, fitter, show=False):
             sim,
             fit_conf,
             fitter,
+            image_id,
             cat=medsifier.cat,
             seg=medsifier.seg,
             obs=odict[key],
@@ -1159,6 +1160,10 @@ def get_fitter(sim_conf, fit_conf, fitrng):
 
     elif fit_conf['fitter']=='max':
         fitter = fitters.MaxFitter(fit_conf, nband, fitrng)
+
+    elif fit_conf['fitter']=='mom':
+        fitter = fitters.Moments(fit_conf, nband, fitrng)
+
 
     else:
         raise ValueError("bad fitter: '%s'" % fit_conf['fitter'])

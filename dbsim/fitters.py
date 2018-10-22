@@ -1275,6 +1275,170 @@ class MaxFitter(FitterBase):
         }
 
 
+class Moments(FitterBase):
+    def __init__(self, *args, **kw):
+        super(Moments,self).__init__(*args, **kw)
+        self._set_mompars()
+ 
+    def go(self, mbobs_list):
+        """
+        run metacal on all objects
+
+        if some fail they will not be placed into the final output
+        """
+
+        datalist=[]
+        for i,mbobs in enumerate(mbobs_list):
+            assert len(mbobs)==1
+            assert len(mbobs[0])==1
+
+
+            if self._check_flags(mbobs):
+                obs=mbobs[0][0]
+                try:
+                    pres  = self._measure_moments(obs.psf)
+                    res   = self._measure_moments(obs)
+                except BootGalFailure:
+                    res={'flags':1}
+
+                if res['flags'] != 0:
+                    logger.debug("        moments failed")
+                else:
+                    # make sure we send an array
+                    fit_data = self._get_output(res, pres)
+
+                    self._print_result(fit_data)
+                    datalist.append(fit_data)
+
+        if len(datalist) == 0:
+            return None
+
+        output = eu.numpy_util.combine_arrlist(datalist)
+        return output
+
+    def _print_result(self, data):
+        mess="        wmom s2n: %g Trat: %g"
+        logger.debug(mess % (data['wmom_s2n'][0], data['wmom_T_ratio'][0]))
+
+    def _measure_moments(self, obs):
+        """
+        measure weighted moments
+        """
+
+
+        wpars=self['weight']
+
+        if wpars['use_canonical_center']:
+            #logger.debug('        getting moms with canonical center')
+        
+            ccen=(np.array(obs.image.shape)-1.0)/2.0
+            jold=obs.jacobian
+            obs.jacobian = ngmix.Jacobian(
+                row=ccen[0],
+                col=ccen[1],
+                dvdrow=jold.dvdrow,
+                dudrow=jold.dudrow,
+                dvdcol=jold.dvdcol,
+                dudcol=jold.dudcol,
+
+            )
+
+        res = self.weight.get_weighted_moments(obs=obs,maxrad=1.e9)
+
+        if wpars['use_canonical_center']:
+            obs.jacobian=jold
+
+        if res['flags'] != 0:
+            raise BootGalFailure("        moments failed")
+
+        res['numiter'] = 1
+        res['g'] = res['e']
+        res['g_cov'] = res['e_cov']
+
+        return res
+
+    def _get_dtype(self, model, npars):
+        n=Namer(front=model)
+        dt = [
+            ('psf_g','f8',2),
+            ('psf_T','f8'),
+            (n('s2n'),'f8'),
+            (n('pars'),'f8',npars),
+            #(n('pars_cov'),'f8',(npars,npars)),
+            (n('g'),'f8',2),
+            (n('g_cov'),'f8',(2,2)),
+            (n('T'),'f8'),
+            (n('T_err'),'f8'),
+            (n('T_ratio'),'f8'),
+        ]
+
+        return dt
+
+    def _get_output(self, res, pres):
+
+        npars=res['pars'].size
+
+        model='wmom'
+        n=Namer(front=model)
+
+        dt=self._get_dtype(model, npars)
+        output=np.zeros(1, dtype=dt)
+
+        output['psf_g'] = pres['g']
+        output['psf_T'] = pres['T']
+        output[n('s2n')] = res['s2n']
+        output[n('pars')] = res['pars']
+        output[n('g')] = res['g']
+        output[n('g_cov')] = res['g_cov']
+        output[n('T')] = res['T']
+        output[n('T_err')] = res['T_err']
+        output[n('T_ratio')] = res['T']/pres['T']
+
+        return output
+
+    def _set_mompars(self):
+        wpars=self['weight']
+
+        T=ngmix.moments.fwhm_to_T(wpars['fwhm'])
+
+        # the weight is always centered at 0, 0 or the
+        # center of the coordinate system as defined
+        # by the jacobian
+
+        weight=ngmix.GMixModel(
+            [0.0, 0.0, 0.0, 0.0, T, 1.0],
+            'gauss',
+        )
+
+        # make the max of the weight 1.0 to get better
+        # fluxes
+
+        weight.set_norms()
+        norm=weight.get_data()['norm'][0]
+        weight.set_flux(1.0/norm)
+
+        self.weight=weight
+
+        wpars['use_canonical_center']=wpars.get('use_canonical_center',False)
+
+    def _check_flags(self, mbobs):
+        """
+        only one epoch, so anything that hits an edge
+        """
+        flags=self['metacal'].get('bmask_flags',None)
+
+        isok=True
+        if flags is not None:
+            for obslist in mbobs:
+                for obs in obslist:
+                    w=np.where( (obs.bmask & flags) != 0 )
+                    if w[0].size > 0:
+                        logger.info("   EDGE HIT")
+                        isok = False
+                        break
+
+        return isok
+
 
 class Metacal2CompFitter(MetacalFitter):
     """
