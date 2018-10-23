@@ -1289,32 +1289,128 @@ class Moments(FitterBase):
 
         datalist=[]
         for i,mbobs in enumerate(mbobs_list):
-            assert len(mbobs)==1
-            assert len(mbobs[0])==1
-
 
             if self._check_flags(mbobs):
-                obs=mbobs[0][0]
-                try:
-                    pres  = self._measure_moments(obs.psf)
-                    res   = self._measure_moments(obs)
-                except BootGalFailure:
-                    res={'flags':1}
+                obs=self._do_coadd_maybe(mbobs)
+
+                pres  = self._measure_moments(obs.psf)
+                res   = self._measure_moments(obs)
 
                 if res['flags'] != 0:
-                    logger.debug("        moments failed")
-                else:
+                    logger.debug("        moments failed: %s" % res['flags'])
+                    print(res)
+
+                if pres['flags'] != 0:
+                    logger.debug("        psf moments failed: %s" % pres['flags'])
+                    print(pres)
+
+                if res['flags']==0 and pres['flags']==0:
                     # make sure we send an array
                     fit_data = self._get_output(res, pres)
 
                     self._print_result(fit_data)
                     datalist.append(fit_data)
 
+                elif False:
+                    import images
+                    images.multiview(obs.image,title='im')
+                    images.multiview(obs.psf.image,title='psf im')
+                    if 'q'==input('hit a key (q to quit): '):
+                        stop
+
+
+
         if len(datalist) == 0:
             return None
 
         output = eu.numpy_util.combine_arrlist(datalist)
         return output
+
+    def _do_coadd_maybe(self, mbobs):
+        """
+        coadd all images and psfs.  Assume perfect registration and
+        same wcs
+        """
+
+        # note here assuming we can re-use the wcs etc.
+        new_obs = mbobs[0][0].copy()
+
+        if len(mbobs)==1 and len(mbobs[0])==1:
+            return new_obs
+
+        first=True
+        wsum=0.0
+        for obslist in mbobs:
+            for obs in obslist:
+                tim = obs.image
+                twt = obs.weight
+                tpsf_im = obs.psf.image
+                tpsf_wt = obs.psf.weight
+
+                medweight = np.median(twt)
+                noise=np.sqrt(1.0/medweight)
+
+                psf_medweight = np.median(tpsf_wt)
+                psf_noise=np.sqrt(1.0/psf_medweight)
+
+                tnim     = self.rng.normal(size=tim.shape, scale=noise)
+                tpsf_nim = self.rng.normal(size=tpsf_im.shape, scale=psf_noise)
+
+                wsum += medweight
+
+                if first:
+                    im      = tim*medweight
+                    psf_im  = tpsf_im*medweight
+
+                    nim     = tnim * medweight
+                    psf_nim = tpsf_nim * medweight
+
+                    first=False
+                else:
+                    im      += tim*medweight
+                    psf_im  += tpsf_im*medweight
+
+                    nim     += tnim * medweight
+                    psf_nim += tpsf_nim * medweight
+
+
+        fac=1.0/wsum
+        im *= fac
+        psf_im *= fac
+
+        nim *= fac
+        psf_nim *= fac
+
+        noise_var = nim.var()
+        psf_noise_var = psf_nim.var()
+
+        wt = np.zeros(im.shape) + 1.0/noise_var
+        psf_wt = np.zeros(psf_im.shape) + 1.0/psf_noise_var
+
+        new_obs.set_image(im, update_pixels=False )
+        new_obs.set_weight(wt )
+
+        new_obs.psf.set_image(psf_im, update_pixels=False )
+        new_obs.psf.set_weight(psf_wt)
+
+        """
+        pconf={
+            'model':'gauss',
+            'lm_pars':{'maxfev':2000,'ftol':1.0e-5,'xtol':1.0e-5},
+            'ntry':2,
+        )
+        _fit_one_psf(new_obs.psf, pconf)
+        """
+
+        if False:
+            import images
+            images.multiview(new_obs.image,title='im')
+            images.multiview(new_obs.psf.image,title='psf im')
+            if 'q'==input('hit a key (q to quit): '):
+                stop
+
+        return new_obs
+
 
     def _print_result(self, data):
         mess="        wmom s2n: %g Trat: %g"
@@ -1349,7 +1445,7 @@ class Moments(FitterBase):
             obs.jacobian=jold
 
         if res['flags'] != 0:
-            raise BootGalFailure("        moments failed")
+            return res
 
         res['numiter'] = 1
         res['g'] = res['e']

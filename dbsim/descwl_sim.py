@@ -149,10 +149,17 @@ class DESWLSim(simulation.Sim):
         #images.multiview(psf_im,title='psf')
         #stop
 
+        psf_cen = (np.array(psf_im.shape)-1.0)/2.0
+        psf_j = ngmix.DiagonalJacobian(
+            row=psf_cen[0],
+            col=psf_cen[1],
+            scale=dobs.pixel_scale,
+        )
+
         psf_obs=ngmix.Observation(
             psf_im,
             weight=psf_weight,
-            jacobian=j,
+            jacobian=psf_j,
         )
 
         return ngmix.Observation(
