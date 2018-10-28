@@ -15,6 +15,8 @@ parser.add_argument('output_file',help="output file to write")
 
 parser.add_argument('--show',action='store_true',
                   help="show plots on the screen")
+parser.add_argument('--save',action='store_true',
+                  help="save a plot of the sim")
 parser.add_argument('--make-plots',action='store_true',
                   help="make some plots of the trials")
 
@@ -52,6 +54,7 @@ def main():
             args.output_file,
             make_plots=args.make_plots,
             show=args.show,
+            save=args.save,
         )
 
 main()
