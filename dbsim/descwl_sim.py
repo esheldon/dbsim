@@ -178,6 +178,8 @@ class DESWLSim(simulation.Sim):
         """
         import descwl
 
+        assert self['shear_all'],'currently only using new shear all method'
+
         dobs, engine, builder = self._get_dobs_engine_builder(band)
 
         objs=[]
