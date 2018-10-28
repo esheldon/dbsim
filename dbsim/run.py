@@ -23,6 +23,7 @@ def go(sim_conf,
        seed,
        output_file,
        show=False,
+       save=False,
        make_plots=False,
        #max_run_time_hours=1.0
       ):
@@ -81,6 +82,11 @@ def go(sim_conf,
             sim.show()
             if 'q'==input('hit a key (q to quit): '):
                 return
+        elif save:
+            plt=sim.show(show=False)
+            fname='rgb-%06d.png' % i
+            logger.info('saving: %s' % fname)
+            plt.write_img(1000,1000,fname)
 
         image_id=i
         if metad is not None and metad['dometa']:

@@ -317,11 +317,11 @@ class Sim(dict):
             meds_config=meds_config,
         )
 
-    def show(self):
+    def show(self, **kw):
         """
         show a nice image of the simulation
         """
-        visualize.view_mbobs(self.obs)
+        return visualize.view_mbobs(self.obs, **kw)
 
     '''
     def show(self):

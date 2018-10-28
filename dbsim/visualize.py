@@ -19,8 +19,11 @@ def make_rgb(mbobs):
     import images
 
     #SCALE=.015*np.sqrt(2.0)
-    SCALE=0.001
+    #SCALE=0.001
+    # lsst
+    SCALE=0.0005
     relative_scales = np.array([1.00, 1.2, 2.0])
+
     scales= SCALE*relative_scales
 
     r=mbobs[2][0].image
