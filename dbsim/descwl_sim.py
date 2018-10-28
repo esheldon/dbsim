@@ -248,6 +248,22 @@ class DESWLSim(simulation.Sim):
         pars['cosmic_shear_g1'] = self['shear'][0]
         pars['cosmic_shear_g2'] = self['shear'][1]
 
+        psf=self.get('psf',None)
+        if psf is not None:
+            if psf['type']=='gauss':
+                psf_model=galsim.Gaussian(
+                    fwhm=psf['fwhm'],
+                )
+                if 'g' in psf:
+                    psf_model=psf_model.shear(
+                        g1=psf['g'][0],
+                        g2=psf['g'][1],
+                    )
+            else:
+                raise ValueError('bad psf type: %s' % psf['type'])
+            
+            pars['psf_model'] = psf_model
+
         return descwl.survey.Survey(**pars)
 
     def _set_view_area(self):
