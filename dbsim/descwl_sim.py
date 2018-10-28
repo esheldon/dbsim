@@ -173,6 +173,45 @@ class DESWLSim(simulation.Sim):
         """
         make the image, which goes into 'dobs' and
         WeakLensingDeblending Survey instance
+
+        In this version we render them ourselves, all sheared together
+        """
+        import descwl
+
+        dobs, engine, builder = self._get_dobs_engine_builder(band)
+
+        objs=[]
+        for i,entry in enumerate(catalog):
+
+            # offsets in arcmin
+            dy, dx = pos_yx[i]
+            dy = dy*60.0
+            dx = dx*60.0
+
+            galaxy = builder.from_catalog(entry,dx,dy,dobs.filter_band)
+
+            objs.append(galaxy.model)
+
+        objs=galsim.Add(objs)
+        objs=objs.shear(
+            g1=self['shear'][0],
+            g2=self['shear'][1],
+        )
+        objs=galsim.Convolve([ objs, dobs.psf_model])
+        objs.drawImage(image=dobs.image)
+        if add_noise:
+            noise = galsim.PoissonNoise(
+                rng=self.gs_rng,
+                sky_level = dobs.mean_sky_level,
+            )
+            dobs.image.addNoise(noise)
+
+        return dobs
+
+    def _make_band_dobs_old(self, catalog, pos_yx, band, add_noise=True):
+        """
+        make the image, which goes into 'dobs' and
+        WeakLensingDeblending Survey instance
         """
         import descwl
 
@@ -210,6 +249,7 @@ class DESWLSim(simulation.Sim):
 
         return dobs
 
+
     def _get_dobs_engine_builder(self, band):
         import descwl
 
@@ -245,8 +285,8 @@ class DESWLSim(simulation.Sim):
         pars['filter_band'] = band
         pars['image_width'] = dims[1]
         pars['image_height'] = dims[0]
-        pars['cosmic_shear_g1'] = self['shear'][0]
-        pars['cosmic_shear_g2'] = self['shear'][1]
+        #pars['cosmic_shear_g1'] = self['shear'][0]
+        #pars['cosmic_shear_g2'] = self['shear'][1]
 
         psf=self.get('psf',None)
         if psf is not None:
