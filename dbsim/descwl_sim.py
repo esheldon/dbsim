@@ -129,10 +129,10 @@ class DESWLSim(simulation.Sim):
         noise = np.sqrt( dobs.mean_sky_level )
         weight = im*0 + 1.0/noise**2
 
-        psf_im=dobs.psf_image.array.copy()
+        #psf_im=dobs.psf_image.array.copy()
         psf_im = dobs.psf_model.drawImage(
-            nx=32,
-            ny=32,
+            nx=48,
+            ny=48,
             scale=dobs.pixel_scale,
         ).array
         psf_im *= 1.0/psf_im.sum()
