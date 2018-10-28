@@ -36,6 +36,34 @@ def make_rgb(mbobs):
     )
     return rgb
 
+def fake_rgb(mbobs):
+    """
+    fake rgb from single band
+    """
+    import images
+
+    #SCALE=.015*np.sqrt(2.0)
+    #SCALE=0.001
+    SCALE=1.0
+    relative_scales = np.array([1.0, 1.0, 1.0])
+    scales= SCALE*relative_scales
+
+
+    r=mbobs[0][0].image
+    g=r
+    b=r
+
+    rgb=images.get_color_image(
+        r.transpose(),
+        g.transpose(),
+        b.transpose(),
+        #scales=scales,
+        #nonlinear=0.12,
+        nonlinear=0.07,
+    )
+    return rgb
+
+
 def view_mbobs(mbobs, **kw):
     import images
 
@@ -43,8 +71,30 @@ def view_mbobs(mbobs, **kw):
         rgb=make_rgb(mbobs)
         plt=images.view(rgb, **kw)
     else:
+        #rgb=fake_rgb(mbobs)
         # just show the first one
-        plt = images.view(mbobs[0][0].image, **kw)
+        #plt = images.view(mbobs[0][0].image, **kw)
+        #plt=images.view(rgb, **kw)
+        #imc = mbobs[0][0].image.clip(min=1.0e-6)
+
+        imin=-95.0
+        imax=985.0
+        imc = mbobs[0][0].image.copy()
+        #imin, imax = imc.min(), imc.max()
+        #print('min:',imin,'max:',imax)
+        imc -= imin
+        imc *= 1.0/imax
+        plt = images.view(imc, nonlinear=0.3)
+
+        #imstd=imc.std()
+        #imc.clip(min=-, out=imc)
+        #logim=np.log10(imc)
+
+        #imc -= imc.min() + 1.0e-6
+        #logim=np.log10(imc)
+        #imc *= 1.0/imc.max()
+        #logim *= 1.0/logim.max()
+        #plt = images.view(logim, **kw)
 
     return plt
 
