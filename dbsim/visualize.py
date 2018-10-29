@@ -22,7 +22,8 @@ def make_rgb(mbobs):
     #SCALE=0.001
     # lsst
     SCALE=0.0005
-    relative_scales = np.array([1.00, 1.2, 2.0])
+    #relative_scales = np.array([1.00, 1.2, 2.0])
+    relative_scales = np.array([1.00, 1.0, 2.0])
 
     scales= SCALE*relative_scales
 
