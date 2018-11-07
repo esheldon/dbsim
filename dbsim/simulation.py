@@ -309,12 +309,14 @@ class Sim(dict):
 
         sx_config=self.get('sx',None)
         meds_config=self.get('meds',None)
+        peak_config=self.get('peaks',None)
         return mof.stamps.MEDSifier(
             dlist,
             cat=cat,
             seg=seg,
             sx_config=sx_config,
             meds_config=meds_config,
+            peak_config=peak_config,
         )
 
     def show(self, **kw):
