@@ -1,4 +1,5 @@
 from . import run
+from . import run_redetect
 from . import fitters
 from . import simulation
 from . import descwl_sim

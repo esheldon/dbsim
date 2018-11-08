@@ -961,17 +961,32 @@ class MomentMetacalFitter(MetacalFitter):
         self.weight=weight
 
         wpars['use_canonical_center']=wpars.get('use_canonical_center',False)
+        if wpars['use_canonical_center']:
+            logger.info('using canonical center')
+
+        if 'maxrad' in wpars:
+            if wpars['maxrad']=='5sigma':
+                sigma=np.sqrt(T/2)
+                self.maxrad=5*sigma
+            else:
+                raise ValueError('bad maxrad type: %s' % wpars['maxrad'])
+        else:
+            self.maxrad=1.e9
+
+        logger.info('using maxrad: %g arcsec' % self.maxrad)
+
 
     def _do_one_metacal(self, mbobs):
-        assert len(mbobs)==1
-        assert len(mbobs[0])==1
+        #assert len(mbobs)==1
+        #assert len(mbobs[0])==1
+        obs=do_coadd_maybe(mbobs, self.rng)
 
         conf=self['metacal']
 
         mpars=conf['metacal_pars']
 
         odict=ngmix.metacal.get_all_metacal(
-            mbobs,
+            obs,
             rng=self.rng,
             **mpars
         )
@@ -980,8 +995,7 @@ class MomentMetacalFitter(MetacalFitter):
         res={}
 
         for type in mpars['types']:
-            mbobs=odict[type]
-            obs=mbobs[0][0]
+            obs=odict[type]
 
             tres=self._measure_moments(obs)
             tres['g'] = tres['e']
@@ -1000,6 +1014,7 @@ class MomentMetacalFitter(MetacalFitter):
 
 
 
+    """
     def _get_bootstrapper(self, mbobs):
         from ngmix.bootstrap import AdmomMetacalBootstrapper
 
@@ -1008,7 +1023,7 @@ class MomentMetacalFitter(MetacalFitter):
             admom_pars=self['metacal'].get('admom_pars',None),
             metacal_pars=self['metacal']['metacal_pars'],
         )
-
+    """
 
     def _measure_moments(self, obs):
         """
@@ -1018,21 +1033,14 @@ class MomentMetacalFitter(MetacalFitter):
         wpars=self['weight']
 
         if wpars['use_canonical_center']:
-            #logger.debug('        getting moms with canonical center')
         
             ccen=(np.array(obs.image.shape)-1.0)/2.0
             jold=obs.jacobian
-            obs.jacobian = ngmix.Jacobian(
-                row=ccen[0],
-                col=ccen[1],
-                dvdrow=jold.dvdrow,
-                dudrow=jold.dudrow,
-                dvdcol=jold.dvdcol,
-                dudcol=jold.dudcol,
+            jnew=jold.copy()
+            jnew.set_cen(row=ccen[0], col=ccen[1])
+            obs.jacobian = jnew
 
-            )
-
-        res = self.weight.get_weighted_moments(obs=obs,maxrad=1.e9)
+        res = self.weight.get_weighted_moments(obs=obs,maxrad=self.maxrad)
 
         if wpars['use_canonical_center']:
             obs.jacobian=jold
@@ -1291,7 +1299,7 @@ class Moments(FitterBase):
         for i,mbobs in enumerate(mbobs_list):
 
             if self._check_flags(mbobs):
-                obs=self._do_coadd_maybe(mbobs)
+                obs=do_coadd_maybe(mbobs, self.rng)
 
                 pres  = self._measure_moments(obs.psf)
                 res   = self._measure_moments(obs)
@@ -1326,91 +1334,6 @@ class Moments(FitterBase):
         output = eu.numpy_util.combine_arrlist(datalist)
         return output
 
-    def _do_coadd_maybe(self, mbobs):
-        """
-        coadd all images and psfs.  Assume perfect registration and
-        same wcs
-        """
-
-        # note here assuming we can re-use the wcs etc.
-        new_obs = mbobs[0][0].copy()
-
-        if len(mbobs)==1 and len(mbobs[0])==1:
-            return new_obs
-
-        first=True
-        wsum=0.0
-        for obslist in mbobs:
-            for obs in obslist:
-                tim = obs.image
-                twt = obs.weight
-                tpsf_im = obs.psf.image
-                tpsf_wt = obs.psf.weight
-
-                medweight = np.median(twt)
-                noise=np.sqrt(1.0/medweight)
-
-                psf_medweight = np.median(tpsf_wt)
-                psf_noise=np.sqrt(1.0/psf_medweight)
-
-                tnim     = self.rng.normal(size=tim.shape, scale=noise)
-                tpsf_nim = self.rng.normal(size=tpsf_im.shape, scale=psf_noise)
-
-                wsum += medweight
-
-                if first:
-                    im      = tim*medweight
-                    psf_im  = tpsf_im*medweight
-
-                    nim     = tnim * medweight
-                    psf_nim = tpsf_nim * medweight
-
-                    first=False
-                else:
-                    im      += tim*medweight
-                    psf_im  += tpsf_im*medweight
-
-                    nim     += tnim * medweight
-                    psf_nim += tpsf_nim * medweight
-
-
-        fac=1.0/wsum
-        im *= fac
-        psf_im *= fac
-
-        nim *= fac
-        psf_nim *= fac
-
-        noise_var = nim.var()
-        psf_noise_var = psf_nim.var()
-
-        wt = np.zeros(im.shape) + 1.0/noise_var
-        psf_wt = np.zeros(psf_im.shape) + 1.0/psf_noise_var
-
-        new_obs.set_image(im, update_pixels=False )
-        new_obs.set_weight(wt )
-
-        new_obs.psf.set_image(psf_im, update_pixels=False )
-        new_obs.psf.set_weight(psf_wt)
-
-        """
-        pconf={
-            'model':'gauss',
-            'lm_pars':{'maxfev':2000,'ftol':1.0e-5,'xtol':1.0e-5},
-            'ntry':2,
-        )
-        _fit_one_psf(new_obs.psf, pconf)
-        """
-
-        if False:
-            import images
-            images.multiview(new_obs.image,title='im')
-            images.multiview(new_obs.psf.image,title='psf im')
-            if 'q'==input('hit a key (q to quit): '):
-                stop
-
-        return new_obs
-
 
     def _print_result(self, data):
         mess="        wmom s2n: %g Trat: %g"
@@ -1429,17 +1352,13 @@ class Moments(FitterBase):
         
             ccen=(np.array(obs.image.shape)-1.0)/2.0
             jold=obs.jacobian
-            obs.jacobian = ngmix.Jacobian(
-                row=ccen[0],
-                col=ccen[1],
-                dvdrow=jold.dvdrow,
-                dudrow=jold.dudrow,
-                dvdcol=jold.dvdcol,
-                dudcol=jold.dudcol,
 
-            )
+            jnew=jold.copy()
+            jnew.set_cen(row=ccen[0], col=ccen[1])
+            obs.jacobian = jnew
 
-        res = self.weight.get_weighted_moments(obs=obs,maxrad=1.e9)
+
+        res = self.weight.get_weighted_moments(obs=obs,maxrad=self.maxrad)
 
         if wpars['use_canonical_center']:
             obs.jacobian=jold
@@ -1516,6 +1435,19 @@ class Moments(FitterBase):
         self.weight=weight
 
         wpars['use_canonical_center']=wpars.get('use_canonical_center',False)
+        if wpars['use_canonical_center']:
+            logger.info('using canonical center')
+
+        if 'maxrad' in wpars:
+            if wpars['maxrad']=='5sigma':
+                sigma=np.sqrt(T/2)
+                self.maxrad=5*sigma
+            else:
+                raise ValueError('bad maxrad type: %s' % wpars['maxrad'])
+        else:
+            self.maxrad=1.e9
+
+        logger.info('using maxrad: %g arcsec' % self.maxrad)
 
     def _check_flags(self, mbobs):
         """
@@ -2407,4 +2339,90 @@ class EMPSFRunner(EMRunner):
         ]
 
         return ngmix.GMix(pars=pars)
+
+def do_coadd_maybe(mbobs, rng):
+    """
+    coadd all images and psfs.  Assume perfect registration and
+    same wcs
+    """
+
+    # note here assuming we can re-use the wcs etc.
+    new_obs = mbobs[0][0].copy()
+
+    if len(mbobs)==1 and len(mbobs[0])==1:
+        return new_obs
+
+    first=True
+    wsum=0.0
+    for obslist in mbobs:
+        for obs in obslist:
+            tim = obs.image
+            twt = obs.weight
+            tpsf_im = obs.psf.image
+            tpsf_wt = obs.psf.weight
+
+            medweight = np.median(twt)
+            noise=np.sqrt(1.0/medweight)
+
+            psf_medweight = np.median(tpsf_wt)
+            psf_noise=np.sqrt(1.0/psf_medweight)
+
+            tnim     = rng.normal(size=tim.shape, scale=noise)
+            tpsf_nim = rng.normal(size=tpsf_im.shape, scale=psf_noise)
+
+            wsum += medweight
+
+            if first:
+                im      = tim*medweight
+                psf_im  = tpsf_im*medweight
+
+                nim     = tnim * medweight
+                psf_nim = tpsf_nim * medweight
+
+                first=False
+            else:
+                im      += tim*medweight
+                psf_im  += tpsf_im*medweight
+
+                nim     += tnim * medweight
+                psf_nim += tpsf_nim * medweight
+
+
+    fac=1.0/wsum
+    im *= fac
+    psf_im *= fac
+
+    nim *= fac
+    psf_nim *= fac
+
+    noise_var = nim.var()
+    psf_noise_var = psf_nim.var()
+
+    wt = np.zeros(im.shape) + 1.0/noise_var
+    psf_wt = np.zeros(psf_im.shape) + 1.0/psf_noise_var
+
+    new_obs.set_image(im, update_pixels=False )
+    new_obs.set_weight(wt )
+
+    new_obs.psf.set_image(psf_im, update_pixels=False )
+    new_obs.psf.set_weight(psf_wt)
+
+    """
+    pconf={
+        'model':'gauss',
+        'lm_pars':{'maxfev':2000,'ftol':1.0e-5,'xtol':1.0e-5},
+        'ntry':2,
+    )
+    _fit_one_psf(new_obs.psf, pconf)
+    """
+
+    if False:
+        import images
+        images.multiview(new_obs.image,title='im')
+        images.multiview(new_obs.psf.image,title='psf im')
+        if 'q'==input('hit a key (q to quit): '):
+            stop
+
+    return new_obs
+
 

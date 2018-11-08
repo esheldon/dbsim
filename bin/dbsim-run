@@ -46,7 +46,11 @@ def main():
         )
     else:
         logger.info('running sim')
-        dbsim.run.go(
+        if fit_conf.get('redetect',False):
+            func=dbsim.run_redetect.go
+        else:
+            func=dbsim.run.go
+        func(
             sim_conf,
             fit_conf,
             args.ntrials,
