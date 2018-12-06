@@ -304,7 +304,10 @@ class DESWLSim(simulation.Sim):
             else:
                 raise ValueError('bad psf type: %s' % psf['type'])
             
-            pars['psf_model'] = psf_model
+        else:
+            psf_model=None
+
+        pars['psf_model'] = psf_model
 
         return descwl.survey.Survey(**pars)
 
