@@ -247,8 +247,8 @@ def main():
 
     mom_sep, mom_data=read_mom_data()
 
-    plotm(md_sep, md_data, 'blue', 'filled circle','metadetect+MOF',arr, key)
     plotm(nomd_sep, nomd_data, 'red', 'filled triangle','metacal+MOF',arr, key, docurve=True)
+    plotm(md_sep, md_data, 'blue', 'filled circle','metadetect+MOF',arr, key)
     plotm(mom_sep, mom_data, 'dark green', 'plus','metadetect+moments',arr, key, docurve=False)
 
     arr[0,0] += biggles.LineY(0)
