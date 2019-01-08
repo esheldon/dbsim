@@ -1,0 +1,260 @@
+#!/usr/bin/env python
+import dbsim
+import biggles
+import numpy as np
+import fitsio
+
+SEP=[1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 2.75, 3.0, 3.5, 4.0]
+
+def read_one_metadetect_data(runs, select):
+    sums=dbsim.averaging.load_sums(runs, select)
+    st = dbsim.averaging.mpi_average_shear(sums)
+    st['shear_true'] = (0.02, 0.00)
+    return st
+
+def read_metadetect_data(select='s2n10'):
+    dlist=[]
+    sep=[]
+    for s in SEP:
+        r = 'runs-bdkpair-sall-%sas-y5sxSN20-metadetect-05' % s
+        try:
+            data = read_one_metadetect_data(r, select)
+            dlist.append(data)
+            sep.append(s)
+        except OSError:
+            pass
+    return sep, dlist
+
+def read_mom_data(select='s2n10'):
+    dlist=[]
+    sep=[]
+    for s in SEP:
+        r = 'runs-bdkpair-sall-%sas-y5sxSN20-metadetect-mom01' % s
+        try:
+            data = read_one_metadetect_data(r, select)
+            dlist.append(data)
+            sep.append(s)
+        except OSError:
+            r = 'run-bdkpair-sall-%sas-y5sxSN20-metadetect-mom01-01' % s
+            try:
+                data = read_one_metadetect_data([r], select)
+                dlist.append(data)
+                sep.append(s)
+            except OSError:
+                pass
+
+    return sep, dlist
+
+
+def read_metamof_data(select='s2n10'):
+    dlist=[]
+    sep=[]
+    for s in SEP:
+        r = 'run-bdkpair-sall-%sas-y5sxSN20-metamof02-01' % s
+        try:
+            data = read_one_metadetect_data([r], select)
+            dlist.append(data)
+            sep.append(s)
+        except OSError:
+            pass
+    return sep, dlist
+
+
+def read_nometadetect_data(select='s2n10'):
+    dlist=[]
+    sep=[]
+    for s in SEP:
+        r = 'run-bdkpair-sall-%sas-y5sxSN20-mcal-mofbdf01-01' % s
+
+        f=dbsim.files.get_means_url(r,extra='s2n10')
+        print(f)
+        data=fitsio.read(f)
+        dlist.append(data)
+        sep.append(s)
+    return sep, dlist
+
+
+def plotmc(sep, alldata, color, type, label, tab):
+    m=np.zeros(len(sep))
+    merr=np.zeros(len(sep))
+    c=np.zeros(len(sep))
+    cerr=np.zeros(len(sep))
+
+    for i,data in enumerate(alldata):
+        sums=alldata[i]
+        if 'shear' in sums.dtype.names:
+            st=sums
+        else:
+            st = dbsim.averaging.mpi_average_shear(sums)
+        st['shear_true'] = (0.02,0.00)
+        mcfits = dbsim.averaging.get_m_c_oneshear(st, nsig=1)
+
+        m[i] = mcfits['m'][0]
+        merr[i] = mcfits['merr'][0]
+        c[i] = mcfits['c'][0]
+        cerr[i] = mcfits['cerr'][0]
+
+    biggles.plot(
+        sep,
+        m,
+        yerr=merr,
+        color=color,
+        visible=False,
+        label=label,
+        type=type,
+        plt=tab[0,0],
+    )
+
+    biggles.plot(
+        sep,
+        c,
+        yerr=cerr,
+        color=color,
+        visible=False,
+        label=label,
+        type=type,
+        plt=tab[1,0],
+    )
+
+def plotm(sep, alldata, color, type, label, arr, key, docurve=False):
+    m=np.zeros(len(sep))
+    merr=np.zeros(len(sep))
+
+    for i,data in enumerate(alldata):
+        sums=alldata[i]
+        if 'shear' in sums.dtype.names:
+            st=sums
+        else:
+            st = dbsim.averaging.mpi_average_shear(sums)
+        st['shear_true'] = (0.02,0.00)
+        mcfits = dbsim.averaging.get_m_c_oneshear(st, nsig=1)
+
+        m[i] = mcfits['m'][0]
+        merr[i] = mcfits['merr'][0]
+
+    p = biggles.Points(
+        sep,
+        m,
+        type=type,
+        color=color,
+        label=label,
+    )
+    key += p
+
+    arr[0,0] += p
+
+    #arr[0,0] += biggles.SymmetricErrorBarsY(
+    #    sep,
+    #    m,
+    #    merr,
+    #    type=type,
+    #    color=color,
+    #)
+    if docurve:
+        arr[0,0] += biggles.Curve(
+            sep,
+            m,
+            type='solid',
+            color=color,
+        )
+
+    arr[1,0] += biggles.Points(
+        sep,
+        m,
+        type=type,
+        color=color,
+        size=4,
+    )
+    arr[1,0] += biggles.SymmetricErrorBarsY(
+        sep,
+        m,
+        merr,
+        type=type,
+        color=color,
+    )
+   
+    """
+    biggles.plot(
+        sep,
+        m,
+        yerr=merr,
+        color=color,
+        visible=False,
+        label=label,
+        type=type,
+        plt=arr[0,0],
+    )
+
+    biggles.plot(
+        sep,
+        m,
+        yerr=merr,
+        color=color,
+        visible=False,
+        type=type,
+        plt=arr[1,0],
+    )
+    """
+
+
+
+def main():
+
+    biggles.configure('default','fontsize_min',2)
+    key=biggles.PlotKey(0.9, 0.3, halign='right')
+    xlabel='separation [arcsec]'
+    arr=biggles.FramedArray(
+        2,1,
+        xlabel=xlabel,
+        #ylabel='m',
+        row_fractions=[0.75, 0.25],
+    )
+
+    xrng=[0.8*SEP[0], 1.1*SEP[-1]]
+    myrange_wide=[-0.75, 0.1]
+    myrange=[-0.019, 0.019]
+    #myrange=[-0.015, 0.015]
+
+    arr[0,0].ylabel='m'
+    arr[0,0].xrange=xrng
+    arr[0,0].yrange=myrange_wide
+    arr[0,0] += key
+
+    arr[1,0].ylabel='m'
+    arr[1,0].xrange = xrng
+    arr[1,0].yrange = myrange
+
+    #arr[1,0] = biggles.FramedPlot(
+    #    xrange=xrng,
+    #    yrange=[-2.5e-4, 2.5e-4],
+    #    xlabel='separation [arcsec]',
+    #    ylabel='c',
+    #)
+
+    x=np.linspace(xrng[0], xrng[1])
+    mupper=x*0 + 1.0e-3
+    mlower=x*0 - 1.0e-3
+    cupper=x*0 + 1.0e-4
+    clower=x*0 - 1.0e-4
+
+    arr[0,0] += biggles.FillBetween(x, mupper, x, mlower, color='grey90')
+    arr[1,0] += biggles.FillBetween(x, mupper, x, mlower, color='grey90')
+    #arr[1,0].add( biggles.FillBetween(x, cupper, x, clower, color='grey90') )
+
+    md_sep, md_data=read_metadetect_data()
+    #mmof_sep, mmof_data=read_metamof_data()
+    nomd_sep, nomd_data=read_nometadetect_data()
+
+    mom_sep, mom_data=read_mom_data()
+
+    plotm(md_sep, md_data, 'blue', 'filled circle','metadetect+MOF',arr, key)
+    plotm(nomd_sep, nomd_data, 'red', 'filled triangle','metacal+MOF',arr, key, docurve=True)
+    plotm(mom_sep, mom_data, 'dark green', 'plus','metadetect+moments',arr, key, docurve=False)
+
+    arr[0,0] += biggles.LineY(0)
+    arr[1,0] += biggles.LineY(0)
+    #arr.show()
+    arr.write('/astro/u/esheldon/www/tmp/plots/pairs-mc-bdkpair.png',dpi=150)
+    arr.write('/astro/u/esheldon/www/tmp/plots/pairs-mc-bdkpair.pdf')
+
+main()
